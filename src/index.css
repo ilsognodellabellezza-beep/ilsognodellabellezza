@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --color-blush-50: #FCF8F8;
+  --color-blush-100: #F7EFEF;
+  --color-blush-200: #EEDFE1;
+  --color-blush-300: #DEC7CA;
+  --color-blush-400: #C99EAE;
+  --color-gold-400: #D8B268;
+  --color-gold-500: #C5A059;
+  --color-gold-600: #AA853D;
+  --color-charcoal-800: #261F21;
+  --color-charcoal-900: #191415;
+}
+
+html {
+  scroll-behavior: smooth;
+}

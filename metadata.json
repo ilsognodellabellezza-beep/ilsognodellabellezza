@@ -1,0 +1,6 @@
+{
+  "name": "Il Sogno della Bellezza",
+  "description": "Sito web e gestionale per il centro estetico Il Sogno della Bellezza a Catania con prenotazioni online, promo laser EPILED, e doppio account gestionale.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
