@@ -46,6 +46,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { StaffAccountsPanel } from '../components/StaffAccountsPanel';
 import { GalleryManager } from '../components/GalleryManager';
+import { SlotPicker } from '../components/SlotPicker';
 import { toLocalDateStr, addDays } from '../lib/dates';
 import { OPERATORS, SERVICES } from '../data/mockData';
 import { PageId } from '../types/navigation';
@@ -866,7 +867,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
         {/* Modal Nuovo Appuntamento Banco */}
         {isAddModalOpen && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 border border-[#EEDFE1] shadow-2xl relative">
+            <div className="bg-white rounded-3xl max-w-lg w-full max-h-[92dvh] overflow-y-auto p-5 sm:p-6 space-y-4 border border-[#EEDFE1] shadow-2xl relative">
               <div className="flex items-center justify-between border-b border-[#F7EFEF] pb-3">
                 <h3 className="font-serif text-lg font-bold text-[#261F21]">
                   Nuovo Appuntamento da Banco
@@ -947,28 +948,15 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#261F21]">Data</label>
-                    <input
-                      type="date"
-                      required
-                      value={newDate}
-                      onChange={(e) => setNewDate(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D]"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#261F21]">Orario</label>
-                    <input
-                      type="time"
-                      required
-                      value={newTime}
-                      onChange={(e) => setNewTime(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D]"
-                    />
-                  </div>
-                </div>
+                <SlotPicker
+                  date={newDate}
+                  time={newTime}
+                  onDateChange={setNewDate}
+                  onTimeChange={setNewTime}
+                  operatorId={newOperatorId}
+                  durationMinutes={(SERVICES.find((s) => s.id === newServiceId) || SERVICES[0]).durationMinutes}
+                  refreshKey={appointments.length}
+                />
 
                 <div className="space-y-1">
                   <label className="text-xs font-medium text-[#261F21]">Note</label>
