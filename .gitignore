@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Credenziali account (mai pubblicare)
+scripts/accounts.json
+scripts/credenziali-account.txt

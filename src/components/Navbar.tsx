@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Calendar, ShieldCheck, User, ChevronDown, Menu, X } from 'lucide-react';
+import { Calendar, User, Menu, X } from 'lucide-react';
 import { PageId } from '../types/navigation';
+import { useAuth } from '../lib/auth';
 
 interface NavbarProps {
   currentPage: PageId;
@@ -8,14 +9,13 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
-  const [isGestionaleDropdownOpen, setIsGestionaleDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { customer } = useAuth();
+  const accountLabel = customer ? (customer.fullName.split(' ')[0] || 'Il mio account') : 'Accedi';
 
   const handleNavClick = (page: PageId) => {
     onNavigate(page);
     setIsMobileMenuOpen(false);
-    setIsGestionaleDropdownOpen(false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -27,9 +27,11 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
           onClick={() => handleNavClick('home')}
           className="flex items-center gap-3 text-left group shrink-0"
         >
-          <div className="w-11 h-11 rounded-full bg-[#261F21] text-[#D8B268] flex items-center justify-center font-serif text-lg font-bold border border-[#AA853D]/40 shadow-xs transition-transform group-hover:scale-105">
-            CM
-          </div>
+          <img
+            src="/brand/logo-cm.png"
+            alt="Logo Il Sogno della Bellezza – Chiara e Melania"
+            className="h-12 w-auto transition-transform group-hover:scale-105"
+          />
           <div className="flex flex-col">
             <span className="font-serif text-lg sm:text-xl font-bold tracking-tight text-[#261F21] whitespace-nowrap">
               Il Sogno della Bellezza
@@ -94,49 +96,18 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
         {/* Azioni Destra: Gestionale (Dipendenti vs Titolare) + Prenota */}
         <div className="flex items-center gap-3 shrink-0">
           
-          {/* Dropdown Menu Gestionale */}
-          <div className="relative">
-            <button
-              onClick={() => setIsGestionaleDropdownOpen(!isGestionaleDropdownOpen)}
-              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors ${
-                currentPage === 'gestionale-dipendenti' || currentPage === 'gestionale-titolare'
-                  ? 'bg-[#261F21] text-[#D8B268] border-[#261F21]'
-                  : 'bg-[#FAF5F5] text-[#4A4042] border-[#DEC7CA] hover:bg-[#EEDFE1]'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-[#AA853D]" />
-              <span>Gestionale</span>
-              <ChevronDown className="w-3 h-3 ml-0.5" />
-            </button>
-
-            {isGestionaleDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white border border-[#EEDFE1] rounded-2xl shadow-xl z-50 py-2 animate-fadeIn">
-                <button
-                  onClick={() => handleNavClick('gestionale-dipendenti')}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[#FAF7F7] flex items-center gap-2.5 text-xs text-[#261F21]"
-                >
-                  <User className="w-4 h-4 text-[#736266]" />
-                  <div>
-                    <span className="font-bold block">Account Dipendente</span>
-                    <span className="text-[10px] text-[#8F7D82]">Agenda & clienti (No finanza)</span>
-                  </div>
-                </button>
-
-                <div className="border-t border-[#F7EFEF] my-1" />
-
-                <button
-                  onClick={() => handleNavClick('gestionale-titolare')}
-                  className="w-full text-left px-4 py-2.5 hover:bg-[#FAF7F7] flex items-center gap-2.5 text-xs text-[#261F21]"
-                >
-                  <ShieldCheck className="w-4 h-4 text-[#AA853D]" />
-                  <div>
-                    <span className="font-bold block text-[#AA853D]">Account Titolare</span>
-                    <span className="text-[10px] text-[#8F7D82]">Contabilità, incassi & Cloud</span>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Account cliente */}
+          <button
+            onClick={() => handleNavClick('account')}
+            className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border transition-colors max-w-[160px] ${
+              currentPage === 'account'
+                ? 'bg-[#261F21] text-[#D8B268] border-[#261F21]'
+                : 'bg-[#FAF5F5] text-[#4A4042] border-[#DEC7CA] hover:bg-[#EEDFE1]'
+            }`}
+          >
+            <User className="w-3.5 h-3.5 text-[#AA853D] shrink-0" />
+            <span className="truncate">{accountLabel}</span>
+          </button>
 
           {/* Pulsante Primario Pagina Prenotazione */}
           <button
@@ -206,21 +177,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
             Chi Siamo & Contatti
           </button>
 
-          <div className="border-t border-[#EEDFE1] pt-2 space-y-1">
-            <span className="text-[11px] font-bold text-[#8F7D82] uppercase tracking-wider px-3 block">
-              Accesso Gestionale
-            </span>
+          <div className="border-t border-[#EEDFE1] pt-2">
             <button
-              onClick={() => handleNavClick('gestionale-dipendenti')}
-              className="w-full text-left py-2 px-3 rounded-lg hover:bg-[#FAF7F7] text-xs font-semibold text-[#261F21]"
+              onClick={() => handleNavClick('account')}
+              className="w-full text-left py-2 px-3 rounded-lg hover:bg-[#FAF7F7] font-semibold text-[#AA853D] flex items-center gap-2"
             >
-              Account Dipendente (Operatrice)
-            </button>
-            <button
-              onClick={() => handleNavClick('gestionale-titolare')}
-              className="w-full text-left py-2 px-3 rounded-lg hover:bg-[#FAF7F7] text-xs font-bold text-[#AA853D]"
-            >
-              Account Titolare (Chiara & Melania)
+              <User className="w-4 h-4" />
+              {customer ? `Il mio account (${accountLabel})` : 'Accedi o registrati'}
             </button>
           </div>
         </div>

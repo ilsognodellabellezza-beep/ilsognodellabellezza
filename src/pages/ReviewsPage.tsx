@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, MessageSquarePlus, CheckCircle, ShieldCheck } from 'lucide-react';
 import { Review } from '../types';
-import { getStoredReviews, addReview } from '../lib/storage';
+import { loadPublicReviews, addReview } from '../lib/storage';
 import { PageId } from '../types/navigation';
 
 interface ReviewsPageProps {
@@ -16,31 +16,39 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onNavigate }) => {
   const [comment, setComment] = useState('');
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
-  const loadReviews = () => {
-    setReviews(getStoredReviews());
-  };
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadReviews();
-    window.addEventListener('ilsogno_storage_change', loadReviews);
-    return () => window.removeEventListener('ilsogno_storage_change', loadReviews);
+    let active = true;
+    loadPublicReviews().then((r) => active && setReviews(r));
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!author.trim() || !comment.trim()) return;
+    if (author.trim().length < 2 || comment.trim().length < 5 || submitting) return;
 
-    addReview({
-      author: author.trim(),
-      rating,
-      treatmentName,
-      comment: comment.trim(),
-    });
-
-    setAuthor('');
-    setComment('');
-    setFeedbackSuccess(true);
-    setTimeout(() => setFeedbackSuccess(false), 4000);
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await addReview({
+        author: author.trim(),
+        rating,
+        treatmentName,
+        comment: comment.trim(),
+      });
+      setAuthor('');
+      setComment('');
+      setFeedbackSuccess(true);
+      setTimeout(() => setFeedbackSuccess(false), 6000);
+    } catch {
+      setSubmitError('Invio non riuscito. Riprova tra qualche minuto.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -146,7 +154,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onNavigate }) => {
           {feedbackSuccess && (
             <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-emerald-600" />
-              <span>Grazie di cuore! La tua recensione è stata pubblicata con successo.</span>
+              <span>Grazie di cuore! La tua recensione è stata inviata e sarà pubblicata dopo una breve verifica.</span>
             </div>
           )}
 
@@ -216,11 +224,18 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onNavigate }) => {
               />
             </div>
 
+            {submitError && (
+              <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
+                {submitError}
+              </p>
+            )}
+
             <button
               type="submit"
-              className="w-full py-3 bg-[#261F21] hover:bg-[#191415] text-[#FAF7F7] text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors"
+              disabled={submitting}
+              className="w-full py-3 bg-[#261F21] hover:bg-[#191415] disabled:opacity-60 text-[#FAF7F7] text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-colors"
             >
-              Pubblica Recensione
+              {submitting ? 'Invio in corso…' : 'Invia Recensione'}
             </button>
           </form>
         </div>

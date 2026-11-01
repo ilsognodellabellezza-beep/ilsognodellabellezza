@@ -11,7 +11,8 @@ import {
   X,
   Phone,
   Mail,
-  ArrowRight
+  ArrowRight,
+  LogOut
 } from 'lucide-react';
 import { Appointment, Client, AppointmentStatus } from '../types';
 import {
@@ -19,8 +20,12 @@ import {
   updateAppointmentStatus,
   getStoredClients,
   searchClients,
-  saveAppointment
+  saveAppointment,
+  loadManagementData,
+  STORAGE_EVENT
 } from '../lib/storage';
+import { useAuth } from '../lib/auth';
+import { toLocalDateStr, addDays } from '../lib/dates';
 import { OPERATORS, SERVICES } from '../data/mockData';
 import { PageId } from '../types/navigation';
 
@@ -46,26 +51,38 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
   const [newClientEmail, setNewClientEmail] = useState('');
   const [newServiceId, setNewServiceId] = useState(SERVICES[0].id);
   const [newOperatorId, setNewOperatorId] = useState(OPERATORS[0].id);
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(toLocalDateStr());
   const [newTime, setNewTime] = useState('10:00');
   const [newNotes, setNewNotes] = useState('');
 
-  const loadData = () => {
+  const { profile, signOut } = useAuth();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const readCache = () => {
     setAppointments(getStoredAppointments());
     setClients(getStoredClients());
   };
 
+  const refresh = () =>
+    loadManagementData({ includeOwnerData: false })
+      .then(() => setLoadError(null))
+      .catch((err: Error) => setLoadError(err.message));
+
   useEffect(() => {
-    loadData();
-    window.addEventListener('ilsogno_storage_change', loadData);
-    return () => window.removeEventListener('ilsogno_storage_change', loadData);
+    readCache();
+    refresh();
+    window.addEventListener(STORAGE_EVENT, readCache);
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener(STORAGE_EVENT, readCache);
+      window.clearInterval(interval);
+    };
   }, []);
 
   const filteredAppointments = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const todayStr = toLocalDateStr();
+    const tomorrowStr = toLocalDateStr(addDays(new Date(), 1));
 
     return appointments.filter((app) => {
       if (dateFilter === 'today' && app.date !== todayStr) return false;
@@ -89,40 +106,49 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
     return searchClients(clientSearch);
   }, [clients, clientSearch]);
 
-  const handleStatusChange = (id: string, status: AppointmentStatus) => {
-    updateAppointmentStatus(id, status);
+  const handleStatusChange = async (id: string, status: AppointmentStatus) => {
+    try {
+      await updateAppointmentStatus(id, status);
+    } catch (err) {
+      alert(`Impossibile aggiornare lo stato: ${(err as Error).message}`);
+    }
   };
 
-  const handleQuickAdd = (e: React.FormEvent) => {
+  const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newClientName || !newClientPhone || !newDate || !newTime) return;
+    if (!newClientName || !newClientPhone || !newDate || !newTime || saving) return;
 
     const serv = SERVICES.find((s) => s.id === newServiceId) || SERVICES[0];
     const op = OPERATORS.find((o) => o.id === newOperatorId) || OPERATORS[0];
     const price = serv.promoPrice || serv.price;
 
-    saveAppointment({
-      clientName: newClientName,
-      clientPhone: newClientPhone,
-      clientEmail: newClientEmail || `${newClientName.toLowerCase().replace(/\s+/g, '')}@example.com`,
-      serviceId: serv.id,
-      serviceName: serv.name,
-      servicePrice: price,
-      operatorId: op.id,
-      operatorName: op.name,
-      date: newDate,
-      time: newTime,
-      durationMinutes: serv.durationMinutes,
-      status: 'confermato',
-      notes: newNotes,
-      reminderSent: false,
-    });
-
-    setIsAddModalOpen(false);
-    setNewClientName('');
-    setNewClientPhone('');
-    setNewClientEmail('');
-    setNewNotes('');
+    setSaving(true);
+    try {
+      await saveAppointment({
+        clientName: newClientName,
+        clientPhone: newClientPhone,
+        clientEmail: newClientEmail,
+        serviceId: serv.id,
+        serviceName: serv.name,
+        servicePrice: price,
+        operatorId: op.id,
+        operatorName: op.name,
+        date: newDate,
+        time: newTime,
+        durationMinutes: serv.durationMinutes,
+        notes: newNotes,
+      });
+      await refresh();
+      setIsAddModalOpen(false);
+      setNewClientName('');
+      setNewClientPhone('');
+      setNewClientEmail('');
+      setNewNotes('');
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -145,12 +171,24 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[11px] text-[#DEC7CA]">
+              Collegata: <strong className="text-[#FAF7F7]">{profile?.fullName}</strong>
+            </span>
+            {profile?.role === 'titolare' && (
+              <button
+                onClick={() => onNavigate('gestionale-titolare')}
+                className="px-3.5 py-1.5 bg-[#FAF7F7]/10 hover:bg-[#FAF7F7]/20 text-[#D8B268] text-xs font-semibold rounded-lg border border-[#AA853D]/40 transition-colors"
+              >
+                Passa ad Account Titolare →
+              </button>
+            )}
             <button
-              onClick={() => onNavigate('gestionale-titolare')}
-              className="px-3.5 py-1.5 bg-[#FAF7F7]/10 hover:bg-[#FAF7F7]/20 text-[#D8B268] text-xs font-semibold rounded-lg border border-[#AA853D]/40 transition-colors"
+              onClick={signOut}
+              className="px-3.5 py-1.5 bg-[#FAF7F7]/10 hover:bg-[#FAF7F7]/20 text-[#FAF7F7] text-xs font-semibold rounded-lg border border-white/20 transition-colors flex items-center gap-1.5"
             >
-              Passa ad Account Titolare →
+              <LogOut className="w-3.5 h-3.5" />
+              Esci
             </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
@@ -161,6 +199,12 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
             </button>
           </div>
         </div>
+
+        {loadError && (
+          <div role="alert" className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700">
+            Impossibile caricare i dati. Controlla la connessione e ricarica la pagina.
+          </div>
+        )}
 
         {/* Tab di Navigazione */}
         <div className="flex items-center gap-3 border-b border-[#EEDFE1] pb-2 text-xs font-bold">
@@ -429,7 +473,7 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-[#261F21]">Email per promemoria Resend</label>
+                  <label className="text-xs font-medium text-[#261F21]">Email (per il promemoria)</label>
                   <input
                     type="email"
                     value={newClientEmail}
@@ -516,7 +560,7 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
                     type="submit"
                     className="px-5 py-2 bg-[#261F21] text-[#FAF7F7] hover:bg-[#191415] text-xs font-semibold rounded-xl shadow-sm"
                   >
-                    Salva Appuntamento
+                    {saving ? 'Salvataggio…' : 'Salva Appuntamento'}
                   </button>
                 </div>
               </form>

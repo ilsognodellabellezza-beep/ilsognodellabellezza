@@ -21,9 +21,11 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           {/* Brand & Mission */}
           <div className="lg:col-span-5 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#261F21] text-[#D8B268] flex items-center justify-center font-serif text-lg font-bold border border-[#AA853D]/50">
-                CM
-              </div>
+              <img
+                src="/brand/logo-cm-light.png"
+                alt="Logo Il Sogno della Bellezza"
+                className="h-12 w-auto"
+              />
               <div>
                 <span className="font-serif text-lg font-bold tracking-tight text-[#FAF7F7] block">
                   Il Sogno della Bellezza
@@ -112,7 +114,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#261F21] hover:bg-[#3B3033] border border-[#AA853D]/40 rounded-lg text-xs text-[#DEC7CA] transition-colors"
               >
                 <User className="w-3.5 h-3.5 text-[#8F7D82]" />
-                <span>Gestionale Dipendenti</span>
+                <span>Area Staff</span>
               </button>
 
               <button
@@ -120,7 +122,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#261F21] hover:bg-[#3B3033] border border-[#AA853D]/40 rounded-lg text-xs text-[#D8B268] font-bold transition-colors"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-[#AA853D]" />
-                <span>Gestionale Titolare</span>
+                <span>Area Titolare</span>
               </button>
             </div>
           </div>

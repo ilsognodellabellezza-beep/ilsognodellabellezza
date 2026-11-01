@@ -8,7 +8,8 @@ export type PageId =
   | 'recensioni'
   | 'chi-siamo'
   | 'gestionale-dipendenti'
-  | 'gestionale-titolare';
+  | 'gestionale-titolare'
+  | 'account';
 
 export interface NavigationProps {
   currentPage: PageId;

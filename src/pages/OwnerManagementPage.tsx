@@ -18,7 +18,12 @@ import {
   ShieldCheck,
   Eye,
   Plus,
-  X
+  X,
+  LogOut,
+  Star,
+  Trash2,
+  MessageSquare,
+  UserCog
 } from 'lucide-react';
 import { Appointment, Client, FinancialSummary, AppointmentStatus } from '../types';
 import {
@@ -28,12 +33,20 @@ import {
   searchClients,
   computeFinancialSummary,
   getStoredEmailLogs,
-  logEmailSent,
   saveAppointment,
-  EmailLog
+  loadManagementData,
+  triggerReminderEmails,
+  getAllDbReviews,
+  setReviewApproved,
+  deleteReview,
+  STORAGE_EVENT,
+  EmailLog,
+  PendingReview
 } from '../lib/storage';
+import { useAuth } from '../lib/auth';
+import { StaffAccountsPanel } from '../components/StaffAccountsPanel';
+import { toLocalDateStr, addDays } from '../lib/dates';
 import { OPERATORS, SERVICES } from '../data/mockData';
-import { SUPABASE_SQL_SCHEMA, VERCEL_JSON_CONFIG, RESEND_CRON_API_CODE } from '../lib/cloudArchitecture';
 import { PageId } from '../types/navigation';
 
 interface OwnerManagementPageProps {
@@ -41,7 +54,7 @@ interface OwnerManagementPageProps {
 }
 
 export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud'>('contabilita');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud' | 'account'>('contabilita');
   
   // Data states
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -62,7 +75,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
   const [newClientEmail, setNewClientEmail] = useState('');
   const [newServiceId, setNewServiceId] = useState(SERVICES[0].id);
   const [newOperatorId, setNewOperatorId] = useState(OPERATORS[0].id);
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(toLocalDateStr());
   const [newTime, setNewTime] = useState('10:00');
   const [newNotes, setNewNotes] = useState('');
 
@@ -72,24 +85,41 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
   // Email preview modal state
   const [previewEmailApp, setPreviewEmailApp] = useState<Appointment | null>(null);
 
-  const loadData = () => {
+  const { profile, signOut } = useAuth();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [sendingReminders, setSendingReminders] = useState(false);
+  const [dbReviews, setDbReviews] = useState<PendingReview[]>([]);
+
+  const readCache = () => {
     setAppointments(getStoredAppointments());
     setClients(getStoredClients());
     setEmailLogs(getStoredEmailLogs());
+    setDbReviews(getAllDbReviews());
     setFinancials(computeFinancialSummary());
   };
 
+  const refresh = () =>
+    loadManagementData({ includeOwnerData: true })
+      .then(() => setLoadError(null))
+      .catch((err: Error) => setLoadError(err.message));
+
   useEffect(() => {
-    loadData();
-    window.addEventListener('ilsogno_storage_change', loadData);
-    return () => window.removeEventListener('ilsogno_storage_change', loadData);
+    readCache();
+    refresh();
+    window.addEventListener(STORAGE_EVENT, readCache);
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      window.removeEventListener(STORAGE_EVENT, readCache);
+      window.clearInterval(interval);
+    };
   }, []);
 
+  const pendingReviews = dbReviews.filter((r) => !r.approved);
+
   const filteredAppointments = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const todayStr = toLocalDateStr();
+    const tomorrowStr = toLocalDateStr(addDays(new Date(), 1));
 
     return appointments.filter((app) => {
       if (dateFilter === 'today' && app.date !== todayStr) return false;
@@ -113,101 +143,112 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
     return searchClients(clientSearch);
   }, [clients, clientSearch]);
 
-  const handleStatusChange = (id: string, status: AppointmentStatus) => {
-    updateAppointmentStatus(id, status);
+  const handleStatusChange = async (id: string, status: AppointmentStatus) => {
+    try {
+      await updateAppointmentStatus(id, status);
+    } catch (err) {
+      alert(`Impossibile aggiornare lo stato: ${(err as Error).message}`);
+    }
   };
 
-  const handleQuickAdd = (e: React.FormEvent) => {
+  const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newClientName || !newClientPhone || !newDate || !newTime) return;
+    if (!newClientName || !newClientPhone || !newDate || !newTime || saving) return;
 
     const serv = SERVICES.find((s) => s.id === newServiceId) || SERVICES[0];
     const op = OPERATORS.find((o) => o.id === newOperatorId) || OPERATORS[0];
     const price = serv.promoPrice || serv.price;
 
-    saveAppointment({
-      clientName: newClientName,
-      clientPhone: newClientPhone,
-      clientEmail: newClientEmail || `${newClientName.toLowerCase().replace(/\s+/g, '')}@example.com`,
-      serviceId: serv.id,
-      serviceName: serv.name,
-      servicePrice: price,
-      operatorId: op.id,
-      operatorName: op.name,
-      date: newDate,
-      time: newTime,
-      durationMinutes: serv.durationMinutes,
-      status: 'confermato',
-      notes: newNotes,
-      reminderSent: false,
-    });
-
-    setIsAddModalOpen(false);
-    setNewClientName('');
-    setNewClientPhone('');
-    setNewClientEmail('');
-    setNewNotes('');
+    setSaving(true);
+    try {
+      await saveAppointment({
+        clientName: newClientName,
+        clientPhone: newClientPhone,
+        clientEmail: newClientEmail,
+        serviceId: serv.id,
+        serviceName: serv.name,
+        servicePrice: price,
+        operatorId: op.id,
+        operatorName: op.name,
+        date: newDate,
+        time: newTime,
+        durationMinutes: serv.durationMinutes,
+        notes: newNotes,
+      });
+      await refresh();
+      setIsAddModalOpen(false);
+      setNewClientName('');
+      setNewClientPhone('');
+      setNewClientEmail('');
+      setNewNotes('');
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Simulate Resend 24h Cron Job
-  const handleTriggerResendCronJob = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-    const eligible = appointments.filter(
-      (app) => app.date === tomorrowStr && app.status === 'confermato' && !app.reminderSent
-    );
-
-    if (eligible.length === 0) {
-      alert(`Nessun appuntamento da notificare per domani (${tomorrowStr}). Crea una prenotazione per domani per testare l'invio Resend.`);
-      return;
+  // Invio manuale dei promemoria di domani
+  const handleTriggerResendCronJob = async () => {
+    setSendingReminders(true);
+    try {
+      const r = await triggerReminderEmails();
+      await refresh();
+      alert(
+        r.processed === 0
+          ? 'Nessun appuntamento da ricordare per domani.'
+          : `Promemoria inviati: ${r.sent}. Falliti: ${r.failed}.`
+      );
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setSendingReminders(false);
     }
+  };
 
-    eligible.forEach((app) => {
-      const current = getStoredAppointments();
-      const updated = current.map((a) => (a.id === app.id ? { ...a, reminderSent: true } : a));
-      localStorage.setItem('ilsogno_appointments_v1', JSON.stringify(updated));
+  const handleReviewApproval = async (id: string, approved: boolean) => {
+    try {
+      await setReviewApproved(id, approved);
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  };
 
-      logEmailSent({
-        recipientEmail: app.clientEmail,
-        recipientName: app.clientName,
-        appointmentCode: app.code,
-        date: app.date,
-        time: app.time,
-        serviceName: app.serviceName,
-        status: 'inviata',
-        triggerType: 'cron_job_24h',
-      });
-    });
-
-    window.dispatchEvent(new Event('ilsogno_storage_change'));
-    alert(`Successo! Inviate ${eligible.length} email promemoria con Resend per gli appuntamenti di domani.`);
+  const handleReviewDelete = async (id: string) => {
+    if (!confirm('Eliminare definitivamente questa recensione?')) return;
+    try {
+      await deleteReview(id);
+    } catch (err) {
+      alert((err as Error).message);
+    }
   };
 
   // Export CSV for accountant
   const handleExportCSV = () => {
     const headers = ['Codice', 'Data', 'Ora', 'Cliente', 'Telefono', 'Trattamento', 'Operatrice', 'Prezzo', 'Stato', 'Metodo Pagamento'];
+    const q = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const rows = appointments.map((app) => [
-      app.code,
-      app.date,
-      app.time,
-      `"${app.clientName}"`,
-      `"${app.clientPhone}"`,
-      `"${app.serviceName}"`,
-      app.operatorName,
-      app.servicePrice.toFixed(2),
-      app.status,
-      app.paymentMethod || 'non_saldato',
+      q(app.code),
+      q(app.date),
+      q(app.time),
+      q(app.clientName),
+      q(app.clientPhone),
+      q(app.serviceName),
+      q(app.operatorName),
+      app.servicePrice.toFixed(2).replace('.', ','),
+      q(app.status),
+      q(app.paymentMethod || 'non_saldato'),
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    // Separatore ";" e BOM: Excel italiano apre il file correttamente
+    const csv = '\uFEFF' + [headers.map(q).join(';'), ...rows.map((r) => r.join(';'))].join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `contabilita_il_sogno_bellezza_${new Date().toISOString().split('T')[0]}.csv`);
+    link.href = url;
+    link.download = `contabilita_il_sogno_bellezza_${toLocalDateStr()}.csv`;
     document.body.appendChild(link);
     link.click();
+    URL.revokeObjectURL(url);
     document.body.removeChild(link);
   };
 
@@ -233,11 +274,21 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
               </span>
             </div>
             <p className="text-xs sm:text-sm text-[#DEC7CA]">
-              Accesso totale: Contabilità aziendale, monitoraggio incassi, esportazione fiscale, CRM e automazioni Cloud.
+              Contabilità, incassi, esportazione per il commercialista, clienti e account dello staff.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[11px] text-[#DEC7CA]">
+              Collegata: <strong className="text-[#FAF7F7]">{profile?.fullName}</strong>
+            </span>
+            <button
+              onClick={signOut}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-[#FAF7F7] text-xs font-semibold rounded-xl border border-white/20 transition-colors flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Esci
+            </button>
             <button
               onClick={() => onNavigate('gestionale-dipendenti')}
               className="px-4 py-2 bg-white/10 hover:bg-white/20 text-[#D8B268] text-xs font-semibold rounded-xl border border-[#AA853D]/40 transition-colors"
@@ -289,7 +340,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Anagrafica Clienti CRM ({clients.length})</span>
+            <span>Clienti ({clients.length})</span>
           </button>
 
           <button
@@ -300,10 +351,28 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                 : 'bg-white text-[#736266] border border-[#EEDFE1]'
             }`}
           >
-            <Database className="w-4 h-4 text-[#AA853D]" />
-            <span>Cloud Supabase & Resend Cron</span>
+            <MessageSquare className="w-4 h-4 text-[#AA853D]" />
+            <span>Promemoria & Recensioni{pendingReviews.length > 0 ? ` (${pendingReviews.length} da approvare)` : ''}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('account')}
+            className={`py-2 px-4 rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'account'
+                ? 'bg-[#261F21] text-[#D8B268]'
+                : 'bg-white text-[#736266] border border-[#EEDFE1]'
+            }`}
+          >
+            <UserCog className="w-4 h-4 text-[#AA853D]" />
+            <span>Account Staff</span>
           </button>
         </div>
+
+        {loadError && (
+          <div role="alert" className="p-4 rounded-2xl bg-red-50 border border-red-200 text-xs text-red-700">
+            Impossibile caricare i dati. Controlla la connessione e ricarica la pagina.
+          </div>
+        )}
 
         {/* TAB 1: CONTABILITA & DATI FINANZIARI */}
         {activeTab === 'contabilita' && (
@@ -428,7 +497,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
           </div>
         )}
 
-        {/* TAB 2: AGENDA APPUNTAMENTI (CON PREZZI & RESEND TRIGGER) */}
+        {/* TAB 2: AGENDA APPUNTAMENTI */}
         {activeTab === 'agenda' && (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#EEDFE1] shadow-2xs">
@@ -498,7 +567,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                       <th className="py-3 px-4">Operatrice</th>
                       <th className="py-3 px-4">Prezzo</th>
                       <th className="py-3 px-4">Stato Appuntamento</th>
-                      <th className="py-3 px-4 text-right">Promemoria Resend</th>
+                      <th className="py-3 px-4 text-right">Promemoria</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#F7EFEF]">
@@ -583,7 +652,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
           </div>
         )}
 
-        {/* TAB 3: ANAGRAFICA CLIENTI CRM */}
+        {/* TAB 3: CLIENTI */}
         {activeTab === 'clienti' && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#EEDFE1] shadow-2xs">
@@ -640,11 +709,11 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
           </div>
         )}
 
-        {/* TAB 4: CLOUD SUPABASE & RESEND CRON */}
+        {/* TAB 4: PROMEMORIA & RECENSIONI */}
         {activeTab === 'cloud' && (
           <div className="space-y-6">
             
-            {/* Simulatore Cron Job Resend 24h */}
+            {/* Promemoria del giorno prima */}
             <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#EEDFE1] shadow-2xs space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -652,19 +721,20 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                     Automazione Notifiche 24 Ore Prima
                   </span>
                   <h3 className="font-serif text-xl font-bold text-[#261F21]">
-                    Simulatore & Test Cron Job Resend
+                    Promemoria email automatici
                   </h3>
                   <p className="text-xs text-[#55474A]">
-                    Il cron job scansiona gli appuntamenti del giorno successivo e invia l'email promemoria via Resend.
+                    Ogni mattina il sistema invia un'email di promemoria alle clienti con appuntamento il giorno dopo. Puoi anche lanciarlo a mano.
                   </p>
                 </div>
 
                 <button
                   onClick={handleTriggerResendCronJob}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#AA853D] hover:bg-[#8C6E2E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors shrink-0"
+                  disabled={sendingReminders}
+                  className="disabled:opacity-60 inline-flex items-center gap-2 px-5 py-2.5 bg-[#AA853D] hover:bg-[#8C6E2E] text-white text-xs font-semibold rounded-xl shadow-xs transition-colors shrink-0"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Esegui Cron Job Resend Adesso</span>
+                  <span>{sendingReminders ? 'Invio in corso…' : 'Invia promemoria di domani adesso'}</span>
                 </button>
               </div>
 
@@ -673,7 +743,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                 <div className="max-h-48 overflow-y-auto border border-[#EEDFE1] rounded-2xl divide-y divide-[#F7EFEF] text-xs">
                   {emailLogs.length === 0 ? (
                     <div className="p-4 text-center text-xs text-[#8F7D82]">
-                      Nessuna notifica inviata finora. Clicca su "Esegui Cron Job Resend" per testare.
+                      Nessun promemoria inviato finora.
                     </div>
                   ) : (
                     emailLogs.map((log) => (
@@ -686,11 +756,17 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-bold">
-                            Inviata con successo
-                          </span>
+                          {log.status === 'inviata' ? (
+                            <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-bold">
+                              Inviata
+                            </span>
+                          ) : (
+                            <span title={log.error} className="text-[10px] font-mono text-red-600 bg-red-50 px-2 py-0.5 rounded font-bold">
+                              Fallita
+                            </span>
+                          )}
                           <span className="block text-[9px] text-[#8F7D82] mt-0.5">
-                            {new Date(log.sentAt).toLocaleTimeString()}
+                            {new Date(log.sentAt).toLocaleString('it-IT')}
                           </span>
                         </div>
                       </div>
@@ -700,94 +776,78 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
               </div>
             </div>
 
-            {/* Script Supabase & Config Vercel */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
-              <div className="bg-white p-6 rounded-3xl border border-[#EEDFE1] shadow-2xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-serif font-bold text-sm text-[#261F21]">
-                      1. Script SQL Supabase
-                    </h4>
-                    <p className="text-[11px] text-[#736266]">
-                      Copia ed esegui nel Supabase SQL Editor per creare tabelle e indici
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(SUPABASE_SQL_SCHEMA, 'supabase')}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#FAF5F5] hover:bg-[#EEDFE1] text-[#261F21] text-xs rounded-lg border border-[#DEC7CA]"
-                  >
-                    {copiedType === 'supabase' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700 font-bold">Copiato!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copia SQL</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                <pre className="p-3 bg-[#191415] text-[#D8B268] rounded-xl text-[10px] font-mono overflow-x-auto max-h-48">
-                  {SUPABASE_SQL_SCHEMA}
-                </pre>
+            {/* Moderazione recensioni inviate dal sito */}
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-[#EEDFE1] shadow-2xs space-y-4">
+              <div>
+                <span className="text-[11px] font-mono uppercase tracking-wider text-[#AA853D] font-bold">
+                  Moderazione
+                </span>
+                <h3 className="font-serif text-xl font-bold text-[#261F21]">Recensioni inviate dal sito</h3>
+                <p className="text-xs text-[#55474A]">
+                  Le nuove recensioni restano nascoste finché non le approvi.
+                </p>
               </div>
 
-              <div className="bg-white p-6 rounded-3xl border border-[#EEDFE1] shadow-2xs space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-serif font-bold text-sm text-[#261F21]">
-                      2. Configurazione vercel.json per Cron Job
-                    </h4>
-                    <p className="text-[11px] text-[#736266]">
-                      Pianificato ogni giorno alle ore 08:00
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => copyToClipboard(VERCEL_JSON_CONFIG, 'vercel')}
-                    className="inline-flex items-center gap-1 px-3 py-1 bg-[#FAF5F5] hover:bg-[#EEDFE1] text-[#261F21] text-xs rounded-lg border border-[#DEC7CA]"
-                  >
-                    {copiedType === 'vercel' ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700 font-bold">Copiato!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copia JSON</span>
-                      </>
-                    )}
-                  </button>
+              {dbReviews.length === 0 ? (
+                <div className="p-4 text-center text-xs text-[#8F7D82] border border-[#EEDFE1] rounded-2xl">
+                  Nessuna recensione ricevuta dal sito.
                 </div>
-                <pre className="p-3 bg-[#191415] text-[#D8B268] rounded-xl text-[11px] font-mono overflow-x-auto max-h-24">
-                  {VERCEL_JSON_CONFIG}
-                </pre>
-
-                <div className="pt-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-[#261F21]">
-                      Codice API Resend (api/cron/reminder-emails.ts)
-                    </span>
-                    <button
-                      onClick={() => copyToClipboard(RESEND_CRON_API_CODE, 'resend')}
-                      className="text-[11px] text-[#AA853D] hover:underline"
-                    >
-                      {copiedType === 'resend' ? 'Copiato!' : 'Copia Codice API'}
-                    </button>
-                  </div>
-                  <pre className="mt-1 p-3 bg-[#191415] text-[#FAF7F7] rounded-xl text-[10px] font-mono overflow-x-auto max-h-24">
-                    {RESEND_CRON_API_CODE}
-                  </pre>
+              ) : (
+                <div className="divide-y divide-[#F7EFEF] border border-[#EEDFE1] rounded-2xl text-xs">
+                  {dbReviews.map((r) => (
+                    <div key={r.id} className="p-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-[#261F21]">{r.author}</span>
+                          <span className="flex text-[#C5A059]">
+                            {[...Array(r.rating)].map((_, i) => (
+                              <Star key={i} className="w-3 h-3 fill-[#C5A059]" />
+                            ))}
+                          </span>
+                          <span className="text-[#8F7D82]">· {r.treatmentName} · {r.date}</span>
+                          {r.approved ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Pubblicata</span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Da approvare</span>
+                          )}
+                        </div>
+                        <p className="text-[#4A4042] break-words">{r.comment}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {r.approved ? (
+                          <button
+                            onClick={() => handleReviewApproval(r.id, false)}
+                            className="px-3 py-1.5 border border-[#DEC7CA] rounded-lg text-[#261F21] font-semibold"
+                          >
+                            Nascondi
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleReviewApproval(r.id, true)}
+                            className="px-3 py-1.5 bg-[#261F21] text-[#FAF7F7] rounded-lg font-semibold flex items-center gap-1"
+                          >
+                            <Check className="w-3.5 h-3.5" /> Approva
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleReviewDelete(r.id)}
+                          aria-label="Elimina recensione"
+                          className="p-1.5 border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-
+              )}
             </div>
 
           </div>
         )}
+
+        {/* TAB 5: ACCOUNT STAFF */}
+        {activeTab === 'account' && <StaffAccountsPanel currentUserId={profile?.id} />}
 
         {/* Modal Nuovo Appuntamento Banco */}
         {isAddModalOpen && (
@@ -832,7 +892,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-[#261F21]">Email per promemoria Resend</label>
+                  <label className="text-xs font-medium text-[#261F21]">Email (per il promemoria)</label>
                   <input
                     type="email"
                     value={newClientEmail}
@@ -919,7 +979,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
                     type="submit"
                     className="px-5 py-2 bg-[#261F21] text-[#FAF7F7] hover:bg-[#191415] text-xs font-semibold rounded-xl shadow-sm"
                   >
-                    Salva Appuntamento
+                    {saving ? 'Salvataggio…' : 'Salva Appuntamento'}
                   </button>
                 </div>
               </form>
@@ -927,14 +987,14 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
           </div>
         )}
 
-        {/* Modal Anteprima Email Resend */}
+        {/* Anteprima email di promemoria */}
         {previewEmailApp && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 border border-[#EEDFE1] shadow-2xl relative">
               <div className="flex items-center justify-between border-b border-[#F7EFEF] pb-3">
                 <div>
                   <h4 className="font-serif font-bold text-base text-[#261F21]">
-                    Anteprima Email Resend Promemoria 24h
+                    Anteprima email di promemoria
                   </h4>
                   <p className="text-[11px] text-[#736266]">
                     Destinatario: {previewEmailApp.clientEmail}
