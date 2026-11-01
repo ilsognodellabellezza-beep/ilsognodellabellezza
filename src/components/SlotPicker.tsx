@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import { getBookedSlots, BookedSlot } from '../lib/storage';
 import { timeToMinutes } from '../lib/dates';
 
@@ -61,12 +61,6 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
     });
   };
 
-  const closedDay = useMemo(() => {
-    if (!date) return false;
-    const dow = new Date(`${date}T12:00:00`).getDay();
-    return dow === 0 || dow === 1;
-  }, [date]);
-
   const status = !date || !time || loading || failed ? null : isFree(time) ? 'libero' : 'occupato';
 
   return (
@@ -81,13 +75,6 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
           <input type="time" required value={time} onChange={(e) => onTimeChange(e.target.value)} className={inputCls} />
         </div>
       </div>
-
-      {closedDay && (
-        <p className="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          Il salone di norma è chiuso di domenica e lunedì.
-        </p>
-      )}
 
       {status && (
         <p
