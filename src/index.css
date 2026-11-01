@@ -18,3 +18,52 @@
 html {
   scroll-behavior: smooth;
 }
+
+/* ---------- Ottimizzazione telefono ---------- */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+}
+
+button, a, select, [role="button"] {
+  touch-action: manipulation;
+}
+
+@media (max-width: 1023px) {
+  /* 16px evita lo zoom automatico di iOS quando si tocca un campo */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  select, input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 44px;
+  }
+  button:active {
+    opacity: 0.85;
+  }
+}
+
+/* Tabelle del gestionale: su telefono diventano schede impilate */
+@media (max-width: 767px) {
+  .mobile-cards, .mobile-cards tbody, .mobile-cards tr, .mobile-cards td {
+    display: block;
+    width: 100%;
+  }
+  .mobile-cards thead {
+    display: none;
+  }
+  .mobile-cards tr {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #F7EFEF;
+  }
+  .mobile-cards td {
+    padding: 0.25rem 0 !important;
+    text-align: left !important;
+    white-space: normal !important;
+    max-width: none !important;
+  }
+}

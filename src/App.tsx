@@ -121,7 +121,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF7F7] flex flex-col font-sans text-[#261F21]">
+    <div className="min-h-dvh bg-[#FAF7F7] flex flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0 font-sans text-[#261F21]">
       {/* Top Bar di Navigazione Multi-Pagina */}
       <Navbar
         currentPage={currentPage}

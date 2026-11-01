@@ -558,7 +558,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
 
             <div className="bg-white rounded-2xl border border-[#EEDFE1] overflow-hidden shadow-2xs">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+                <table className="mobile-cards w-full text-left text-xs">
                   <thead className="bg-[#FAF5F5] border-b border-[#EEDFE1] text-[#736266] uppercase text-[10px] tracking-wider font-semibold">
                     <tr>
                       <th className="py-3 px-4">Codice & Data</th>
