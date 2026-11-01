@@ -1,3 +1,4 @@
+import { GalleryManager } from '../components/GalleryManager';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
@@ -34,7 +35,7 @@ interface StaffManagementPageProps {
 }
 
 export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti'>('agenda');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'galleria'>('agenda');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
 
@@ -207,7 +208,7 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
         )}
 
         {/* Tab di Navigazione */}
-        <div className="flex items-center gap-3 border-b border-[#EEDFE1] pb-2 text-xs font-bold">
+        <div className="flex items-center gap-3 border-b border-[#EEDFE1] pb-2 text-xs font-bold overflow-x-auto">
           <button
             onClick={() => setActiveTab('agenda')}
             className={`py-2 px-4 rounded-xl transition-colors flex items-center gap-2 ${
@@ -231,7 +232,20 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
             <Users className="w-4 h-4" />
             <span>Cerca Clienti ({clients.length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('galleria')}
+            className={`py-2 px-4 rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'galleria'
+                ? 'bg-[#261F21] text-[#D8B268]'
+                : 'bg-white text-[#736266] border border-[#EEDFE1]'
+            }`}
+          >
+            <span>🖼️ Galleria</span>
+          </button>
         </div>
+
+        {activeTab === 'galleria' && <GalleryManager />}
 
         {/* TAB 1: AGENDA APPUNTAMENTI */}
         {activeTab === 'agenda' && (

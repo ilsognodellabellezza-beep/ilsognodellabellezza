@@ -7,6 +7,7 @@ import { LaserPage } from './pages/LaserPage';
 import { BookingPage } from './pages/BookingPage';
 import { ReviewsPage } from './pages/ReviewsPage';
 import { AboutPage } from './pages/AboutPage';
+import { GalleryPage } from './pages/GalleryPage';
 // Il gestionale viene scaricato solo da chi ci accede
 const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage').then((m) => ({ default: m.StaffManagementPage })));
 const OwnerManagementPage = lazy(() => import('./pages/OwnerManagementPage').then((m) => ({ default: m.OwnerManagementPage })));
@@ -93,6 +94,7 @@ export default function App() {
         'laser',
         'prenota',
         'recensioni',
+        'galleria',
         'chi-siamo',
         'gestionale-dipendenti',
         'gestionale-titolare',
@@ -162,6 +164,10 @@ export default function App() {
 
         {currentPage === 'recensioni' && (
           <ReviewsPage onNavigate={navigateTo} />
+        )}
+
+        {currentPage === 'galleria' && (
+          <GalleryPage onNavigate={navigateTo} />
         )}
 
         {currentPage === 'chi-siamo' && (

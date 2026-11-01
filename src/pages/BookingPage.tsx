@@ -59,7 +59,12 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   const [selectedOperator, setSelectedOperator] = useState<Operator | 'any'>('any');
   const [operatorFilterType, setOperatorFilterType] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedTime, setSelectedTime] = useState<string>('');
+  // Più giorni: per ogni giorno scelto si memorizza l'orario (data -> ora)
+  const [picks, setPicks] = useState<Record<string, string>>({});
+  const selectedTime = picks[selectedDate] ?? '';
+  const pickedList = Object.entries(picks).sort(([a], [b]) => a.localeCompare(b));
+  const fmtDay = (d: string) =>
+    new Intl.DateTimeFormat('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00`));
   
   // Client details
   const [clientName, setClientName] = useState('');
@@ -73,8 +78,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   const [serviceSearch, setServiceSearch] = useState('');
 
   // Confirmed booking state
-  const [confirmedBookingCode, setConfirmedBookingCode] = useState<string>('');
-  const [confirmedOperatorName, setConfirmedOperatorName] = useState<string>('');
+  const [confirmedBookings, setConfirmedBookings] = useState<{ code: string; date: string; time: string; operatorName: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
@@ -211,7 +215,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   }, [operatorFilterType]);
 
   const handleConfirmBooking = async () => {
-    if (!selectedService || !selectedDate || !selectedTime || !clientName || !clientPhone || !clientEmail || submitting) {
+    if (!selectedService || pickedList.length === 0 || !clientName || !clientPhone || !clientEmail || submitting) {
       return;
     }
 
@@ -221,42 +225,65 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     }
 
     const duration = selectedService.durationMinutes;
-    const assignedOperator =
-      selectedOperator !== 'any'
-        ? selectedOperator
-        : qualifiedOperators.find((op) => isOperatorFree(bookingsByDate[selectedDate] ?? [], op.id, selectedTime, duration)) ?? qualifiedOperators[0];
-
     const price = selectedService.promoPrice || selectedService.price;
 
     setSubmitting(true);
     setBookingError(null);
+    const done: { code: string; date: string; time: string; operatorName: string }[] = [];
     try {
-      const newApp = await saveAppointment({
-        clientName: clientName.trim(),
-        clientPhone: clientPhone.trim(),
-        clientEmail: clientEmail.trim(),
-        serviceId: selectedService.id,
-        serviceName: selectedService.name,
-        servicePrice: price,
-        operatorId: assignedOperator.id,
-        operatorName: assignedOperator.name,
-        date: selectedDate,
-        time: selectedTime,
-        durationMinutes: duration,
-        notes: clientNotes,
-      });
-      setConfirmedBookingCode(newApp.code);
-      setConfirmedOperatorName(assignedOperator.name);
-      setStep(5);
-    } catch (err) {
-      if (err instanceof SlotTakenError) {
-        setBookingError(err.message);
-        setSelectedTime('');
-        setSlotsVersion((v) => v + 1);
-        setStep(3);
-      } else {
-        setBookingError('Non siamo riusciti a registrare la prenotazione. Riprova o chiamaci al 345 393 8087.');
+      for (const [date, time] of pickedList) {
+        const assignedOperator =
+          selectedOperator !== 'any'
+            ? selectedOperator
+            : qualifiedOperators.find((op) => isOperatorFree(bookingsByDate[date] ?? [], op.id, time, duration)) ?? qualifiedOperators[0];
+        try {
+          const newApp = await saveAppointment({
+            clientName: clientName.trim(),
+            clientPhone: clientPhone.trim(),
+            clientEmail: clientEmail.trim(),
+            serviceId: selectedService.id,
+            serviceName: selectedService.name,
+            servicePrice: price,
+            operatorId: assignedOperator.id,
+            operatorName: assignedOperator.name,
+            date,
+            time,
+            durationMinutes: duration,
+            notes: clientNotes,
+          });
+          done.push({ code: newApp.code, date, time, operatorName: assignedOperator.name });
+        } catch (err) {
+          // le date già registrate restano valide: si tolgono dalla scelta
+          if (done.length > 0) {
+            setPicks((prev) => {
+              const next = { ...prev };
+              done.forEach((d) => delete next[d.date]);
+              return next;
+            });
+          }
+          if (err instanceof SlotTakenError) {
+            setBookingError(
+              (done.length > 0 ? `Registrate ${done.length} prenotazioni su ${pickedList.length} (codici: ${done.map((d) => d.code).join(', ')}). ` : '') +
+                `L'orario del ${fmtDay(date)} alle ${time} è stato appena occupato: scegline un altro.`
+            );
+            setPicks((prev) => {
+              const next = { ...prev };
+              delete next[date];
+              return next;
+            });
+            setSlotsVersion((v) => v + 1);
+            setStep(3);
+          } else {
+            setBookingError(
+              (done.length > 0 ? `Registrate ${done.length} prenotazioni su ${pickedList.length} (codici: ${done.map((d) => d.code).join(', ')}). ` : '') +
+                'Non siamo riusciti a registrare le altre. Riprova o chiamaci al 345 393 8087.'
+            );
+          }
+          return;
+        }
       }
+      setConfirmedBookings(done);
+      setStep(5);
     } finally {
       setSubmitting(false);
     }
@@ -267,13 +294,13 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     setSelectedService(null);
     setSelectedOperator('any');
     setSelectedDate('');
-    setSelectedTime('');
+    setPicks({});
     setClientName('');
     setClientPhone('');
     setClientEmail('');
     setClientNotes('');
     setAcknowledgedWomenOnly(false);
-    setConfirmedBookingCode('');
+    setConfirmedBookings([]);
   };
 
   return (
@@ -353,8 +380,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                 <ChevronRight className="w-4 h-4 text-[#DEC7CA]" />
 
                 <button
-                  onClick={() => selectedService && selectedDate && selectedTime && setStep(4)}
-                  disabled={!selectedService || !selectedDate || !selectedTime}
+                  onClick={() => selectedService && pickedList.length > 0 && setStep(4)}
+                  disabled={!selectedService || pickedList.length === 0}
                   className={`flex items-center gap-2 ${
                     step === 4 ? 'text-[#AA853D] font-bold' : 'text-[#8F7D82]'
                   }`}
@@ -439,7 +466,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         key={service.id}
                         onClick={() => {
                           setSelectedService(service);
-                          setSelectedTime('');
+                          setPicks({});
                           advanceTo(2);
                         }}
                         className={`p-4 sm:p-5 rounded-2xl border text-left cursor-pointer transition-all ${
@@ -564,7 +591,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                 <div
                   onClick={() => {
                     setSelectedOperator('any');
-                    setSelectedTime('');
+                    setPicks({});
                     advanceTo(3);
                   }}
                   className={`p-4 rounded-2xl border cursor-pointer transition-all ${
@@ -603,7 +630,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         key={op.id}
                         onClick={() => {
                           setSelectedOperator(op);
-                          setSelectedTime('');
+                          setPicks({});
                           advanceTo(3);
                         }}
                         className={`p-4 rounded-2xl border text-left cursor-pointer transition-all ${
@@ -651,7 +678,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       Seleziona Data e Orario
                     </h3>
                     <p className="text-xs text-[#55474A]">
-                      Salone aperto da Martedì a Sabato (09:00 - 18:30). Domenica e Lunedì chiuso.
+                      Salone aperto da Martedì a Sabato (09:00 - 18:30). Puoi scegliere più giorni. Domenica e Lunedì chiuso.
                     </p>
                   </div>
                   <button
@@ -667,7 +694,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-xs font-semibold text-[#261F21] block">
-                      Giorni di apertura disponibili:
+                      Scegli uno o più giorni (tocca per aggiungere):
                     </label>
                     <div className="flex items-center gap-3 text-[11px] text-[#55474A]">
                       <span className="flex items-center gap-1.5">
@@ -685,7 +712,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                   )}
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
                     {availableDates.map((item) => {
-                      const isSelected = selectedDate === item.dateStr;
+                      const isActive = selectedDate === item.dateStr;
+                      const pickedTime = picks[item.dateStr];
+                      const isSelected = Boolean(pickedTime);
                       const status = dateStatus[item.dateStr];
                       const isFull = status === 'occupato';
                       return (
@@ -694,12 +723,23 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                           disabled={isFull}
                           aria-label={`${item.dayName} ${item.label}: ${isFull ? 'occupato' : status === 'libero' ? 'disponibile' : 'verifica in corso'}`}
                           onClick={() => {
-                            setSelectedDate(item.dateStr);
-                            setSelectedTime('');
+                            if (isActive && isSelected) {
+                              // secondo tocco su un giorno già scelto: lo toglie
+                              setPicks((prev) => {
+                                const next = { ...prev };
+                                delete next[item.dateStr];
+                                return next;
+                              });
+                              setSelectedDate('');
+                            } else {
+                              setSelectedDate(item.dateStr);
+                            }
                           }}
-                          className={`p-3 rounded-2xl border-2 text-center transition-all ${
+                          className={`p-3 min-h-[76px] rounded-2xl border-2 text-center transition-all ${
                             isSelected
-                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300'
+                              ? `bg-emerald-600 text-white border-emerald-700 shadow-md ${isActive ? 'ring-2 ring-emerald-300' : ''}`
+                              : isActive
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-600 ring-2 ring-emerald-300'
                               : isFull
                               ? 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed'
                               : status === 'libero'
@@ -714,7 +754,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                             {item.label}
                           </span>
                           <span className={`block text-[9px] font-semibold uppercase mt-0.5 ${isSelected ? 'text-emerald-100' : ''}`}>
-                            {isFull ? 'Occupato' : status === 'libero' ? 'Libero' : '…'}
+                            {pickedTime ? `ore ${pickedTime}` : isFull ? 'Occupato' : status === 'libero' ? 'Libero' : '…'}
                           </span>
                         </button>
                       );
@@ -727,7 +767,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                   <div className="space-y-2 pt-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-semibold text-[#261F21]">
-                        Fasce orarie per il {selectedDate}:
+                        Fasce orarie per {fmtDay(selectedDate)}:
                       </label>
                       <span className="text-[11px] text-[#8F7D82]">
                         Durata servizio: {selectedService?.durationMinutes} min
@@ -755,10 +795,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                           <button
                             key={time}
                             disabled={!isAvailable}
-                            onClick={() => {
-                              setSelectedTime(time);
-                              advanceTo(4);
-                            }}
+                            onClick={() => setPicks((prev) => ({ ...prev, [selectedDate]: time }))}
                             aria-label={`${time} ${isAvailable ? 'libero' : 'occupato'}`}
                             className={`py-2.5 px-3 text-xs font-mono font-semibold rounded-xl border-2 transition-all ${
                               isSelected
@@ -780,14 +817,52 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                   </div>
                 )}
 
-                <div className="pt-2 flex items-center justify-between">
+                {pickedList.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-[#FCF8F8] border border-[#EEDFE1] space-y-2">
+                    <p className="text-xs font-semibold text-[#261F21]">
+                      Giorni scelti ({pickedList.length}):
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {pickedList.map(([d, t]) => (
+                        <span key={d} className="inline-flex items-center gap-2 pl-3 pr-1 py-1 rounded-full bg-white border border-[#DEC7CA] text-xs font-semibold text-[#261F21] capitalize">
+                          {fmtDay(d)} · {t}
+                          <button
+                            type="button"
+                            aria-label={`Togli ${fmtDay(d)}`}
+                            onClick={() =>
+                              setPicks((prev) => {
+                                const next = { ...prev };
+                                delete next[d];
+                                return next;
+                              })
+                            }
+                            className="w-7 h-7 rounded-full bg-[#F7EFEF] text-[#736266] flex items-center justify-center"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    {Object.keys(picks).length < availableDates.length && (
+                      <p className="text-[11px] text-[#8F7D82]">Puoi toccare altri giorni per prenotare più appuntamenti insieme.</p>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-2 flex items-center justify-between gap-3">
                   <button
                     onClick={() => setStep(2)}
                     className="px-4 py-2 text-xs font-medium text-[#55474A] hover:text-[#261F21]"
                   >
                     Indietro
                   </button>
-                  <span className="text-[11px] text-[#8F7D82]">Scegli giorno e orario per continuare</span>
+                  <button
+                    disabled={pickedList.length === 0}
+                    onClick={() => setStep(4)}
+                    className="px-6 py-3 bg-[#261F21] text-[#FAF7F7] disabled:opacity-40 text-xs sm:text-sm font-semibold rounded-xl shadow-md"
+                  >
+                    {pickedList.length > 1 ? `Continua con ${pickedList.length} giorni` : 'Continua'}
+                  </button>
                 </div>
               </div>
             )}
@@ -827,8 +902,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                     {selectedService?.name}
                   </h4>
                   <div className="flex flex-wrap items-center gap-4 text-xs text-[#55474A] pt-1">
-                    <span>📅 Data: <strong>{selectedDate}</strong></span>
-                    <span>⏰ Ora: <strong>{selectedTime}</strong></span>
+                    {pickedList.map(([d, t]) => (
+                      <span key={d} className="capitalize">📅 <strong>{fmtDay(d)}</strong> · ⏰ <strong>{t}</strong></span>
+                    ))}
                     <span>
                       👤 Operatrice:{' '}
                       <strong>
@@ -949,7 +1025,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                     className="px-8 py-3.5 bg-[#261F21] text-[#FAF7F7] disabled:opacity-50 hover:bg-[#191415] text-xs sm:text-sm font-semibold rounded-xl shadow-md transition-all hover:scale-[1.01] flex items-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4 text-[#D8B268]" />
-                    <span>{submitting ? 'Invio in corso…' : 'Conferma Prenotazione'}</span>
+                    <span>{submitting ? 'Invio in corso…' : pickedList.length > 1 ? `Conferma ${pickedList.length} prenotazioni` : 'Conferma Prenotazione'}</span>
                   </button>
                 </div>
               </div>
@@ -964,10 +1040,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
 
                 <div className="space-y-2">
                   <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#AA853D]">
-                    Codice Prenotazione: {confirmedBookingCode}
+                    {confirmedBookings.length > 1 ? 'Codici' : 'Codice'} Prenotazione: {confirmedBookings.map((b) => b.code).join(' · ')}
                   </span>
                   <h3 className="font-serif text-2xl sm:text-3xl font-bold text-[#261F21]">
-                    Appuntamento Confermato con Successo!
+                    {confirmedBookings.length > 1 ? `${confirmedBookings.length} Appuntamenti Confermati!` : 'Appuntamento Confermato con Successo!'}
                   </h3>
                   <p className="text-xs sm:text-sm text-[#55474A] max-w-md mx-auto">
                     Grazie {clientName}, ti aspettiamo in <strong>Via delle Viole, 7/9 a Catania</strong>.
@@ -979,44 +1055,42 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                     <span className="text-[#8F7D82]">Trattamento:</span>
                     <span className="font-bold text-[#261F21]">{selectedService?.name}</span>
                   </div>
-                  <div className="flex justify-between border-b border-[#F7EFEF] pb-2">
-                    <span className="text-[#8F7D82]">Data & Orario:</span>
-                    <span className="font-bold text-[#261F21] capitalize">
-                      {selectedDate &&
-                        new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }).format(
-                          new Date(`${selectedDate}T12:00:00`)
-                        )}{' '}
-                      ore {selectedTime}
-                    </span>
-                  </div>
-                  <div className="flex justify-between border-b border-[#F7EFEF] pb-2">
-                    <span className="text-[#8F7D82]">Operatrice:</span>
-                    <span className="font-bold text-[#AA853D]">
-                      {confirmedOperatorName}
-                    </span>
-                  </div>
+                  {confirmedBookings.map((b) => (
+                    <div key={b.code} className="flex justify-between gap-3 border-b border-[#F7EFEF] pb-2">
+                      <span className="font-bold text-[#261F21] capitalize">
+                        {new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${b.date}T12:00:00`))}{' '}
+                        ore {b.time}
+                      </span>
+                      <span className="font-bold text-[#AA853D] text-right">{b.operatorName}</span>
+                    </div>
+                  ))}
                   <div className="flex justify-between pt-1">
-                    <span className="text-[#8F7D82]">Importo da saldare in salone:</span>
+                    <span className="text-[#8F7D82]">Importo da saldare in salone{confirmedBookings.length > 1 ? ' (totale)' : ''}:</span>
                     <span className="font-serif font-bold text-sm text-[#261F21]">
-                      €{(selectedService?.promoPrice || selectedService?.price)?.toFixed(2)}
+                      €{(((selectedService?.promoPrice || selectedService?.price) ?? 0) * confirmedBookings.length).toFixed(2)}
                     </span>
                   </div>
                 </div>
 
-                {selectedService && selectedDate && selectedTime && (
-                  <AddToCalendar
-                    title={`${selectedService.name} – Il Sogno della Bellezza`}
-                    date={selectedDate}
-                    time={selectedTime}
-                    durationMinutes={selectedService.durationMinutes}
-                    description={`Codice prenotazione: ${confirmedBookingCode}\nOperatrice: ${confirmedOperatorName}\nPer modifiche: 345 393 8087`}
-                  />
+                {selectedService && (
+                  <div className="space-y-2">
+                    {confirmedBookings.map((b) => (
+                      <AddToCalendar
+                        key={b.code}
+                        title={`${selectedService.name} – Il Sogno della Bellezza`}
+                        date={b.date}
+                        time={b.time}
+                        durationMinutes={selectedService.durationMinutes}
+                        description={`Codice prenotazione: ${b.code}\nOperatrice: ${b.operatorName}\nPer modifiche: 345 393 8087`}
+                      />
+                    ))}
+                  </div>
                 )}
 
                 <div className="max-w-md mx-auto p-3.5 bg-[#FAF0F2] rounded-xl text-xs text-[#5C242E] flex items-center justify-center gap-2">
                   <Mail className="w-4 h-4 text-[#8A3B49]" />
                   <span>
-                    Il giorno prima riceverai un promemoria su <strong>{clientEmail}</strong>.
+                    Il giorno prima di ogni appuntamento riceverai un promemoria su <strong>{clientEmail}</strong>.
                   </span>
                 </div>
 

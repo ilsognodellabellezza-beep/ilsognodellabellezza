@@ -376,3 +376,60 @@ export async function cancelMyBooking(id: string): Promise<void> {
   const { error } = await supabase.rpc('cancel_my_booking', { p_id: id });
   if (error) throw new Error(error.message.includes('Chiamaci') ? error.message : 'Annullamento non riuscito. Chiamaci al 345 393 8087.');
 }
+
+// ---------------------------------------------------------------------------
+// Galleria foto (pubblica in lettura, caricabile dallo staff)
+// ---------------------------------------------------------------------------
+export interface GalleryPhoto {
+  id: string;
+  path: string;
+  url: string;
+  caption: string;
+  createdAt: string;
+}
+
+const GALLERY_BUCKET = 'galleria';
+
+export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {
+  const { data, error } = await supabase.from('gallery_photos').select('*').order('created_at', { ascending: false });
+  fail('lettura galleria', error);
+  return (data ?? []).map((r: { id: string; path: string; caption: string | null; created_at: string }) => ({
+    id: r.id,
+    path: r.path,
+    url: supabase.storage.from(GALLERY_BUCKET).getPublicUrl(r.path).data.publicUrl,
+    caption: r.caption ?? '',
+    createdAt: r.created_at,
+  }));
+}
+
+/** Riduce la foto (max 1600px, JPEG) così il caricamento da telefono è leggero. */
+async function compressImage(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Foto non leggibile'))), 'image/jpeg', 0.82)
+  );
+}
+
+export async function uploadGalleryPhoto(file: File, caption: string): Promise<void> {
+  const blob = await compressImage(file);
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+  const up = await supabase.storage.from(GALLERY_BUCKET).upload(path, blob, { contentType: 'image/jpeg' });
+  fail('caricamento foto', up.error);
+  const ins = await supabase.from('gallery_photos').insert({ path, caption: caption.trim() || null });
+  if (ins.error) {
+    await supabase.storage.from(GALLERY_BUCKET).remove([path]);
+    fail('salvataggio foto', ins.error);
+  }
+}
+
+export async function deleteGalleryPhoto(photo: GalleryPhoto): Promise<void> {
+  const del = await supabase.from('gallery_photos').delete().eq('id', photo.id);
+  fail('eliminazione foto', del.error);
+  await supabase.storage.from(GALLERY_BUCKET).remove([photo.path]);
+}

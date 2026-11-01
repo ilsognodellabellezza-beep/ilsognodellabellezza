@@ -45,6 +45,7 @@ import {
 } from '../lib/storage';
 import { useAuth } from '../lib/auth';
 import { StaffAccountsPanel } from '../components/StaffAccountsPanel';
+import { GalleryManager } from '../components/GalleryManager';
 import { toLocalDateStr, addDays } from '../lib/dates';
 import { OPERATORS, SERVICES } from '../data/mockData';
 import { PageId } from '../types/navigation';
@@ -54,7 +55,7 @@ interface OwnerManagementPageProps {
 }
 
 export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud' | 'account'>('contabilita');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud' | 'account' | 'galleria'>('contabilita');
   
   // Data states
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -353,6 +354,17 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
           >
             <MessageSquare className="w-4 h-4 text-[#AA853D]" />
             <span>Promemoria & Recensioni{pendingReviews.length > 0 ? ` (${pendingReviews.length} da approvare)` : ''}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('galleria')}
+            className={`py-2 px-4 rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'galleria'
+                ? 'bg-[#261F21] text-[#D8B268]'
+                : 'bg-white text-[#736266] border border-[#EEDFE1]'
+            }`}
+          >
+            <span>🖼️ Galleria</span>
           </button>
 
           <button
@@ -845,6 +857,8 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
 
           </div>
         )}
+
+        {activeTab === 'galleria' && <GalleryManager />}
 
         {/* TAB 5: ACCOUNT STAFF */}
         {activeTab === 'account' && <StaffAccountsPanel currentUserId={profile?.id} />}

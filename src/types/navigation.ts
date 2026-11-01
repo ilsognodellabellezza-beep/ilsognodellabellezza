@@ -6,6 +6,7 @@ export type PageId =
   | 'laser'
   | 'prenota'
   | 'recensioni'
+  | 'galleria'
   | 'chi-siamo'
   | 'gestionale-dipendenti'
   | 'gestionale-titolare'

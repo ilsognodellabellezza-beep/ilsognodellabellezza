@@ -85,6 +85,15 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
           </button>
 
           <button
+            onClick={() => handleNavClick('galleria')}
+            className={`transition-colors whitespace-nowrap hover:text-[#AA853D] ${
+              currentPage === 'galleria' ? 'text-[#AA853D] font-bold border-b-2 border-[#AA853D] pb-1' : ''
+            }`}
+          >
+            Galleria
+          </button>
+
+          <button
             onClick={() => handleNavClick('chi-siamo')}
             className={`transition-colors whitespace-nowrap hover:text-[#AA853D] ${
               currentPage === 'chi-siamo' ? 'text-[#AA853D] font-bold border-b-2 border-[#AA853D] pb-1' : ''
@@ -146,6 +155,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
                 ['laser', 'Laser EPILED 818NM · Promo €119,99'],
                 ['prenota', 'Prenotazioni Online'],
                 ['recensioni', 'Recensioni Clienti'],
+                ['galleria', 'Galleria Foto'],
                 ['chi-siamo', 'Chi Siamo & Contatti'],
                 ['account', customer ? `Il mio account (${accountLabel})` : 'Accedi o registrati'],
               ] as [PageId, string][]).map(([page, label]) => (
