@@ -15,10 +15,9 @@ import {
   Info
 } from 'lucide-react';
 import { Service, Operator, TreatmentCategory } from '../types';
-import { OPERATORS } from '../data/mockData';
 import { saveAppointment, getBookedSlotsRange, BookedSlot, SlotTakenError } from '../lib/storage';
 import { toLocalDateStr, timeToMinutes, addDays } from '../lib/dates';
-import { useSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary } from '../lib/siteSettings';
+import { useSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary, operatorsForService } from '../lib/siteSettings';
 import { useAuth } from '../lib/auth';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { MonthCalendar } from '../components/MonthCalendar';
@@ -57,7 +56,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   const { customer } = useAuth();
 
   // Orari di apertura e prezzi impostati dal titolare nel gestionale
-  const { settings, services: SERVICES } = useSiteConfig();
+  const { settings, services: SERVICES, operators: OPERATORS } = useSiteConfig();
 
   // Form states
   // Si memorizza l'id: il servizio mostrato segue sempre prezzi e durate aggiornati
@@ -68,7 +67,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   );
   const setSelectedService = (s: Service | null) => setSelectedServiceId(s?.id ?? null);
   const [selectedOperator, setSelectedOperator] = useState<Operator | 'any'>('any');
-  const [operatorFilterType, setOperatorFilterType] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('');
   // Più giorni: per ogni giorno scelto si memorizza l'orario (data -> ora)
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -149,11 +147,10 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   }, [visibleMonth, minDate, slotsVersion]);
 
   // Operatrici abilitate al servizio scelto
-  const qualifiedOperators = useMemo(() => {
-    if (!selectedService) return OPERATORS;
-    const q = OPERATORS.filter((op) => selectedService.operatorTypes.includes(op.type));
-    return q.length > 0 ? q : OPERATORS;
-  }, [selectedService]);
+  const qualifiedOperators = useMemo(
+    () => operatorsForService(selectedService, OPERATORS),
+    [selectedService, OPERATORS]
+  );
 
   const isOperatorFree = (bookings: BookedSlot[], operatorId: string, time: string, duration: number) => {
     const start = timeToMinutes(time);
@@ -201,10 +198,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   }, [serviceCategory, serviceSearch]);
 
   // Filtered operators
-  const filteredOperators = useMemo(() => {
-    if (operatorFilterType === 'all') return OPERATORS;
-    return OPERATORS.filter((op) => op.type === operatorFilterType);
-  }, [operatorFilterType]);
+  const filteredOperators = qualifiedOperators;
 
   const handleConfirmBooking = async () => {
     if (!selectedService || pickedList.length === 0 || !clientName || !clientPhone || !clientEmail || submitting) {
@@ -550,33 +544,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                     <ArrowLeft className="w-3.5 h-3.5" />
                     Cambia Servizio
                   </button>
-                </div>
-
-                {/* Filtro per Tipologia di Operatore */}
-                <div className="p-4 bg-[#FAF5F5] rounded-2xl space-y-2">
-                  <span className="text-[11px] font-semibold text-[#736266] uppercase tracking-wider block">
-                    Filtra disponibilità per specializzazione:
-                  </span>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    {[
-                      { id: 'all', label: 'Tutte le Specialiste' },
-                      { id: 'titolare', label: 'Titolare (Chiara)' },
-                      { id: 'lash-master', label: 'Master Ciglia/Sopracciglia (Melania)' },
-                      { id: 'laser-specialist', label: 'Laser & Body Therapist (Alessia)' },
-                    ].map((filter) => (
-                      <button
-                        key={filter.id}
-                        onClick={() => setOperatorFilterType(filter.id)}
-                        className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                          operatorFilterType === filter.id
-                            ? 'bg-[#261F21] text-[#D8B268]'
-                            : 'bg-white text-[#55474A] hover:text-[#261F21]'
-                        }`}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 {/* Opzione: Prima operatrice disponibile */}

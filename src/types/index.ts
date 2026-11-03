@@ -20,6 +20,11 @@ export interface Service {
   onlyWomen?: boolean; // Specific constraint for massages and specific female services
   isPopular?: boolean;
   operatorTypes: ('titolare' | 'lash-master' | 'laser-specialist' | 'estetica-base')[];
+  /** servizi aggiunti dal titolare: operatrici abilitate (per id) */
+  operatorIds?: string[];
+  /** servizio creato dal titolare nel gestionale */
+  custom?: boolean;
+  active?: boolean;
 }
 
 export interface Operator {
@@ -30,6 +35,11 @@ export interface Operator {
   type: 'titolare' | 'lash-master' | 'laser-specialist' | 'estetica-base';
   avatar?: string;
   bio: string;
+  /** dipendente aggiunta dal titolare nel gestionale */
+  custom?: boolean;
+  /** servizi (id) che questa dipendente può eseguire, oltre a quelli per tipo */
+  serviceIds?: string[];
+  active?: boolean;
 }
 
 export type AppointmentStatus = 'confermato' | 'in_corso' | 'completato' | 'annullato';

@@ -7,8 +7,8 @@
  * il sito usa i valori predefiniti qui sotto, quindi continua a funzionare.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Service } from '../types';
-import { SERVICES } from '../data/mockData';
+import { Service, Operator, TreatmentCategory } from '../types';
+import { SERVICES, OPERATORS } from '../data/mockData';
 import { supabase } from './supabase';
 import { timeToMinutes } from './dates';
 
@@ -54,6 +54,8 @@ export const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const store = {
   settings: DEFAULT_SETTINGS,
   overrides: [] as ServiceOverride[],
+  customServices: [] as Service[],
+  customOperators: [] as Operator[],
   loaded: false,
   loading: null as Promise<void> | null,
 };
@@ -79,9 +81,11 @@ function normalizeSettings(raw: unknown): BookingSettings {
 export function loadSiteConfig(force = false): Promise<void> {
   if (store.loading && !force) return store.loading;
   store.loading = (async () => {
-    const [s, o] = await Promise.all([
+    const [s, o, cs, co] = await Promise.all([
       supabase.from('site_settings').select('value').eq('key', 'booking').maybeSingle(),
       supabase.from('service_overrides').select('*'),
+      supabase.from('custom_services').select('*').order('created_at'),
+      supabase.from('custom_operators').select('*').order('created_at'),
     ]);
     if (s.error) console.warn('[siteSettings] impostazioni non disponibili, uso i valori predefiniti:', s.error.message);
     else if (s.data) store.settings = normalizeSettings(s.data.value);
@@ -97,6 +101,10 @@ export function loadSiteConfig(force = false): Promise<void> {
         })
       );
     }
+    if (cs.error) console.warn('[siteSettings] servizi personalizzati non disponibili:', cs.error.message);
+    else store.customServices = (cs.data ?? []).map(mapCustomService);
+    if (co.error) console.warn('[siteSettings] dipendenti personalizzati non disponibili:', co.error.message);
+    else store.customOperators = (co.data ?? []).map(mapCustomOperator);
     store.loaded = true;
     notify();
   })();
@@ -116,11 +124,74 @@ export function applyOverride(base: Service, o?: ServiceOverride): Service {
   };
 }
 
+export const CATEGORY_LABELS: Partial<Record<TreatmentCategory, string>> = {
+  laser: 'Epilazione Laser',
+  massaggi: 'Massaggi Donna',
+  viso: 'Viso Avanzato',
+  sguardo: 'Ciglia & Sopracciglia',
+  'mani-piedi': 'Mani & Piedi',
+};
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function mapCustomService(r: any): Service {
+  const category = r.category as TreatmentCategory;
+  return {
+    id: r.id,
+    name: r.name,
+    category,
+    categoryLabel: CATEGORY_LABELS[category] ?? 'Altri trattamenti',
+    price: Number(r.price),
+    promoPrice: r.promo_price === null ? undefined : Number(r.promo_price),
+    durationMinutes: r.duration_minutes,
+    description: r.description ?? '',
+    benefits: [],
+    onlyWomen: r.only_women,
+    isPopular: r.is_popular,
+    operatorTypes: [],
+    operatorIds: r.operator_ids ?? [],
+    custom: true,
+    active: r.active,
+  };
+}
+
+function mapCustomOperator(r: any): Operator {
+  return {
+    id: r.id,
+    name: r.name,
+    role: r.role || 'Operatrice',
+    specialization: r.specialization ?? '',
+    type: 'estetica-base',
+    bio: '',
+    custom: true,
+    serviceIds: r.service_ids ?? [],
+    active: r.active,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 function buildServices(includeHidden: boolean): Service[] {
   const byId = new Map(store.overrides.map((o) => [o.serviceId, o]));
-  return SERVICES.filter((s) => includeHidden || byId.get(s.id)?.active !== false).map((s) =>
+  const base = SERVICES.filter((s) => includeHidden || byId.get(s.id)?.active !== false).map((s) =>
     applyOverride(s, byId.get(s.id))
   );
+  const custom = store.customServices.filter((s) => includeHidden || s.active !== false);
+  return [...base, ...custom];
+}
+
+function buildOperators(includeHidden: boolean): Operator[] {
+  return [...OPERATORS, ...store.customOperators.filter((o) => includeHidden || o.active !== false)];
+}
+
+/** Operatrici abilitate a un servizio: per tipo (storiche), per elenco servizi della dipendente o per elenco del servizio. */
+export function operatorsForService(service: Service | null, operators: Operator[]): Operator[] {
+  if (!service) return operators;
+  const q = operators.filter(
+    (op) =>
+      service.operatorIds?.includes(op.id) ||
+      op.serviceIds?.includes(service.id) ||
+      (!op.custom && service.operatorTypes.includes(op.type))
+  );
+  return q.length > 0 ? q : operators;
 }
 
 export const getOverrides = () => store.overrides;
@@ -137,16 +208,27 @@ export function useSiteConfig() {
     };
   }, []);
   const overrides = store.overrides;
+  const customServices = store.customServices;
+  const customOperators = store.customOperators;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const services = useMemo(() => buildServices(false), [overrides]);
+  const services = useMemo(() => buildServices(false), [overrides, customServices]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const allServices = useMemo(() => buildServices(true), [overrides]);
+  const allServices = useMemo(() => buildServices(true), [overrides, customServices]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const operators = useMemo(() => buildOperators(false), [customOperators]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allOperators = useMemo(() => buildOperators(true), [customOperators]);
   return {
     settings: store.settings,
     /** servizi prenotabili (esclusi quelli nascosti dal titolare) */
     services,
     /** tutti i servizi, anche quelli nascosti (per il gestionale) */
     allServices,
+    /** dipendenti attive (storiche + aggiunte dal titolare) */
+    operators,
+    allOperators,
+    customServices,
+    customOperators,
     overrides: store.overrides,
     loaded: store.loaded,
   };
@@ -182,6 +264,91 @@ export async function resetServiceOverride(serviceId: string): Promise<void> {
   const { error } = await supabase.from('service_overrides').delete().eq('service_id', serviceId);
   if (error) throw new Error(error.message);
   store.overrides = store.overrides.filter((x) => x.serviceId !== serviceId);
+  notify();
+}
+
+export interface NewServiceInput {
+  name: string;
+  category: TreatmentCategory;
+  price: number;
+  promoPrice: number | null;
+  durationMinutes: number;
+  description: string;
+  onlyWomen: boolean;
+  isPopular: boolean;
+  operatorIds: string[];
+  active: boolean;
+}
+
+const newId = (prefix: string, name: string) =>
+  prefix + '-' + name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) + '-' + Math.random().toString(36).slice(2, 6);
+
+export async function saveCustomService(input: NewServiceInput, id?: string): Promise<void> {
+  const rowId = id ?? newId('svc', input.name);
+  const { data, error } = await supabase
+    .from('custom_services')
+    .upsert({
+      id: rowId,
+      name: input.name.trim(),
+      category: input.category,
+      price: input.price,
+      promo_price: input.promoPrice,
+      duration_minutes: input.durationMinutes,
+      description: input.description.trim(),
+      only_women: input.onlyWomen,
+      is_popular: input.isPopular,
+      operator_ids: input.operatorIds,
+      active: input.active,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  const svc = mapCustomService(data);
+  const exists = store.customServices.some((x) => x.id === rowId);
+  store.customServices = exists ? store.customServices.map((x) => (x.id === rowId ? svc : x)) : [...store.customServices, svc];
+  notify();
+}
+
+export async function deleteCustomService(id: string): Promise<void> {
+  const { error } = await supabase.from('custom_services').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  store.customServices = store.customServices.filter((x) => x.id !== id);
+  notify();
+}
+
+export interface NewOperatorInput {
+  name: string;
+  role: string;
+  specialization: string;
+  serviceIds: string[];
+  active: boolean;
+}
+
+export async function saveCustomOperator(input: NewOperatorInput, id?: string): Promise<void> {
+  const rowId = id ?? newId('op', input.name);
+  const { data, error } = await supabase
+    .from('custom_operators')
+    .upsert({
+      id: rowId,
+      name: input.name.trim(),
+      role: input.role.trim(),
+      specialization: input.specialization.trim(),
+      service_ids: input.serviceIds,
+      active: input.active,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  const op = mapCustomOperator(data);
+  const exists = store.customOperators.some((x) => x.id === rowId);
+  store.customOperators = exists ? store.customOperators.map((x) => (x.id === rowId ? op : x)) : [...store.customOperators, op];
+  notify();
+}
+
+export async function deleteCustomOperator(id: string): Promise<void> {
+  const { error } = await supabase.from('custom_operators').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+  store.customOperators = store.customOperators.filter((x) => x.id !== id);
   notify();
 }
 

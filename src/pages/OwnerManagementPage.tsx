@@ -48,8 +48,8 @@ import { StaffAccountsPanel } from '../components/StaffAccountsPanel';
 import { GalleryManager } from '../components/GalleryManager';
 import { SlotPicker } from '../components/SlotPicker';
 import { toLocalDateStr, addDays } from '../lib/dates';
-import { OPERATORS } from '../data/mockData';
 import { SiteSettingsPanel } from '../components/SiteSettingsPanel';
+import { AgendaTab } from '../components/AgendaBoard';
 import { useSiteConfig } from '../lib/siteSettings';
 import { PageId } from '../types/navigation';
 
@@ -61,7 +61,7 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
   const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud' | 'account' | 'galleria' | 'sito'>('contabilita');
   
   // Data states
-  const { allServices: SERVICES } = useSiteConfig();
+  const { allServices: SERVICES, operators: OPERATORS } = useSiteConfig();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
@@ -526,6 +526,18 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
 
         {/* TAB 2: AGENDA APPUNTAMENTI */}
         {activeTab === 'agenda' && (
+          <AgendaTab
+            appointments={appointments}
+            showPrices
+            onPreviewEmail={(a) => setPreviewEmailApp(a)}
+            onStatusChange={handleStatusChange}
+            onAddAt={(date, time, operatorId) => {
+              setNewDate(date);
+              setNewTime(time);
+              setNewOperatorId(operatorId);
+              setIsAddModalOpen(true);
+            }}
+            listView={
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#EEDFE1] shadow-2xs">
               <div className="flex items-center gap-1 bg-[#FAF5F5] p-1 rounded-xl text-xs">
@@ -677,6 +689,8 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
               </div>
             </div>
           </div>
+            }
+          />
         )}
 
         {/* TAB 3: CLIENTI */}

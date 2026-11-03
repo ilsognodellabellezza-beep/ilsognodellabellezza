@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { UserPlus, KeyRound, Trash2, ShieldCheck, User, Loader2, Eye, EyeOff } from 'lucide-react';
-import { OPERATORS } from '../data/mockData';
+import { useSiteConfig } from '../lib/siteSettings';
 import {
   StaffAccount,
   listStaffAccounts,
@@ -13,6 +13,7 @@ const inputCls =
   'w-full px-3 py-2.5 text-xs sm:text-sm border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D] bg-white';
 
 export const StaffAccountsPanel: React.FC<{ currentUserId?: string }> = ({ currentUserId }) => {
+  const { operators: OPERATORS } = useSiteConfig();
   const [accounts, setAccounts] = useState<StaffAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

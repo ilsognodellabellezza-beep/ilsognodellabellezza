@@ -28,8 +28,8 @@ import {
 } from '../lib/storage';
 import { useAuth } from '../lib/auth';
 import { toLocalDateStr, addDays } from '../lib/dates';
-import { OPERATORS } from '../data/mockData';
 import { useSiteConfig } from '../lib/siteSettings';
+import { AgendaTab } from '../components/AgendaBoard';
 import { PageId } from '../types/navigation';
 
 interface StaffManagementPageProps {
@@ -49,7 +49,7 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
 
   // Quick add appointment modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const { allServices: SERVICES } = useSiteConfig();
+  const { allServices: SERVICES, operators: OPERATORS } = useSiteConfig();
   const [newClientName, setNewClientName] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
@@ -252,6 +252,17 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
 
         {/* TAB 1: AGENDA APPUNTAMENTI */}
         {activeTab === 'agenda' && (
+          <AgendaTab
+            appointments={appointments}
+
+            onStatusChange={handleStatusChange}
+            onAddAt={(date, time, operatorId) => {
+              setNewDate(date);
+              setNewTime(time);
+              setNewOperatorId(operatorId);
+              setIsAddModalOpen(true);
+            }}
+            listView={
           <div className="space-y-4">
             {/* Barra Filtri */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-[#EEDFE1] shadow-2xs">
@@ -395,6 +406,8 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
               </div>
             </div>
           </div>
+            }
+          />
         )}
 
         {/* TAB 2: CERCA CLIENTI */}

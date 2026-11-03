@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Clock, Euro, Loader2, RotateCcw } from 'lucide-react';
+import { CheckCircle2, Clock, Euro, Loader2, Plus, RotateCcw, Trash2, UserPlus } from 'lucide-react';
+import { Operator, Service, TreatmentCategory } from '../types';
 import {
   BookingSettings,
   DayHours,
@@ -7,6 +8,10 @@ import {
   WEEKDAY_NAMES,
   WEEKDAY_ORDER,
   resetServiceOverride,
+  saveCustomService,
+  deleteCustomService,
+  saveCustomOperator,
+  deleteCustomOperator,
   saveBookingSettings,
   saveServiceOverride,
   useSiteConfig,
@@ -23,6 +28,12 @@ const errMsg = (e: unknown) => {
   const m = (e as Error).message || '';
   return /site_settings|service_overrides|schema cache|relation/i.test(m) ? SQL_HINT : m;
 };
+const errMsg2 = (e: unknown) => {
+  const m = (e as Error).message || '';
+  return /custom_services|custom_operators|schema cache|relation/i.test(m)
+    ? 'Esegui lo script supabase/07-servizi-dipendenti.sql nel database (SQL Editor di Supabase).'
+    : m;
+};
 
 /** Gestione del sito (solo titolare): orari di apertura, prezzi, durate e visibilità dei servizi. */
 export const SiteSettingsPanel: React.FC = () => {
@@ -37,6 +48,8 @@ export const SiteSettingsPanel: React.FC = () => {
         </p>
       </div>
       <HoursEditor key={loaded ? "ready" : "loading"} initial={settings} ready={loaded} />
+      <OperatorsEditor />
+      <CustomServicesEditor />
       <ServicesEditor overrides={overrides} />
     </div>
   );
@@ -312,6 +325,358 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
             className="px-3 py-2 text-xs font-semibold text-[#736266] border border-[#DEC7CA] rounded-xl flex items-center gap-1.5 disabled:opacity-40"
           >
             <RotateCcw className="w-3.5 h-3.5" /> Ripristina originale
+          </button>
+        )}
+        {msg && (
+          <span role="status" className={`text-xs font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            {msg.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Nuovi servizi
+// ---------------------------------------------------------------------------
+const CATEGORY_OPTIONS: { id: TreatmentCategory; label: string }[] = [
+  { id: 'laser', label: 'Epilazione Laser' },
+  { id: 'massaggi', label: 'Massaggi Donna' },
+  { id: 'sguardo', label: 'Ciglia & Sopracciglia' },
+  { id: 'viso', label: 'Viso Avanzato' },
+  { id: 'mani-piedi', label: 'Mani & Piedi' },
+];
+
+const CustomServicesEditor: React.FC = () => {
+  const { customServices } = useSiteConfig();
+  return (
+    <section className={cardCls}>
+      <div className="flex items-center gap-2">
+        <Plus className="w-5 h-5 text-[#AA853D]" />
+        <h3 className="font-serif text-lg font-bold text-[#261F21]">Aggiungi nuovi servizi</h3>
+      </div>
+      <p className="text-[11px] text-[#8F7D82]">
+        I servizi che aggiungi compaiono subito nella pagina Trattamenti e nella prenotazione online, con le operatrici che scegli.
+      </p>
+      <div className="space-y-3">
+        {customServices.map((s) => (
+          <CustomServiceCard key={s.id} service={s} />
+        ))}
+        <CustomServiceCard key={`new-${customServices.length}`} />
+      </div>
+    </section>
+  );
+};
+
+const CustomServiceCard: React.FC<{ service?: Service }> = ({ service }) => {
+  const { allOperators } = useSiteConfig();
+  const isNew = !service;
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({
+    name: service?.name ?? '',
+    category: (service?.category ?? 'viso') as TreatmentCategory,
+    price: service ? String(service.price) : '',
+    promo: service?.promoPrice !== undefined ? String(service.promoPrice) : '',
+    duration: service ? String(service.durationMinutes) : '60',
+    description: service?.description ?? '',
+    onlyWomen: service?.onlyWomen ?? false,
+    isPopular: service?.isPopular ?? false,
+    active: service?.active ?? true,
+    operatorIds: service?.operatorIds ?? ([] as string[]),
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const toggleOp = (id: string) =>
+    setF((x) => ({ ...x, operatorIds: x.operatorIds.includes(id) ? x.operatorIds.filter((o) => o !== id) : [...x.operatorIds, id] }));
+
+  const save = async () => {
+    const price = numOrNull(f.price);
+    const promo = numOrNull(f.promo);
+    const duration = numOrNull(f.duration);
+    if (f.name.trim().length < 2) return setMsg({ ok: false, text: 'Inserisci il nome del servizio.' });
+    if (price === null || !(price >= 0)) return setMsg({ ok: false, text: 'Prezzo non valido.' });
+    if (promo !== null && !(promo >= 0 && promo < price)) return setMsg({ ok: false, text: 'La promo deve essere minore del prezzo.' });
+    if (duration === null || !Number.isInteger(duration) || duration < 5 || duration > 480)
+      return setMsg({ ok: false, text: 'Durata non valida (5–480 minuti).' });
+    if (f.operatorIds.length === 0) return setMsg({ ok: false, text: 'Scegli almeno una operatrice che esegue il servizio.' });
+    setBusy(true);
+    setMsg(null);
+    try {
+      await saveCustomService(
+        {
+          name: f.name,
+          category: f.category,
+          price,
+          promoPrice: promo,
+          durationMinutes: duration,
+          description: f.description,
+          onlyWomen: f.onlyWomen,
+          isPopular: f.isPopular,
+          operatorIds: f.operatorIds,
+          active: f.active,
+        },
+        service?.id
+      );
+      setMsg({ ok: true, text: isNew ? 'Servizio aggiunto' : 'Salvato' });
+      if (isNew) setOpen(false);
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg2(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!service || !confirm(`Eliminare il servizio "${service.name}"? Le prenotazioni già fatte restano nell'agenda.`)) return;
+    setBusy(true);
+    try {
+      await deleteCustomService(service.id);
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg2(e) });
+      setBusy(false);
+    }
+  };
+
+  if (isNew && !open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full py-3 rounded-2xl border-2 border-dashed border-[#DEC7CA] text-xs font-bold text-[#AA853D] flex items-center justify-center gap-2"
+      >
+        <Plus className="w-4 h-4" /> Nuovo servizio
+      </button>
+    );
+  }
+
+  return (
+    <div className={`p-4 rounded-2xl border ${isNew ? 'border-[#AA853D] bg-white' : 'border-[#EEDFE1] bg-[#FCF8F8]'} space-y-3`}>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A] sm:col-span-2">
+          <span>Nome del servizio</span>
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={`${inputCls} w-full`} placeholder="Es. Pulizia viso base" />
+        </label>
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Categoria</span>
+          <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value as TreatmentCategory })} className={`${inputCls} w-full`}>
+            {CATEGORY_OPTIONS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+            <span>Prezzo €</span>
+            <input inputMode="decimal" value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} className={`${inputCls} w-full`} />
+          </label>
+          <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+            <span>Promo €</span>
+            <input inputMode="decimal" value={f.promo} onChange={(e) => setF({ ...f, promo: e.target.value })} className={`${inputCls} w-full`} />
+          </label>
+          <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+            <span>Minuti</span>
+            <input inputMode="numeric" value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })} className={`${inputCls} w-full`} />
+          </label>
+        </div>
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A] sm:col-span-2">
+          <span>Descrizione (opzionale)</span>
+          <textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} className={`${inputCls} w-full`} />
+        </label>
+      </div>
+
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-[#55474A]">Chi lo esegue</span>
+        <div className="flex flex-wrap gap-2">
+          {allOperators.map((op) => (
+            <label
+              key={op.id}
+              className={`px-3 py-1.5 rounded-full border text-xs font-semibold cursor-pointer ${
+                f.operatorIds.includes(op.id) ? 'bg-[#261F21] text-[#D8B268] border-[#261F21]' : 'bg-white text-[#55474A] border-[#DEC7CA]'
+              }`}
+            >
+              <input type="checkbox" className="sr-only" checked={f.operatorIds.includes(op.id)} onChange={() => toggleOp(op.id)} />
+              {op.name}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-[#261F21]">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.onlyWomen} onChange={(e) => setF({ ...f, onlyWomen: e.target.checked })} /> Riservato alle donne
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.isPopular} onChange={(e) => setF({ ...f, isPopular: e.target.checked })} /> Più richiesto
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Visibile sul sito
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={save} disabled={busy} className="px-4 py-2 bg-[#261F21] text-[#D8B268] text-xs font-bold rounded-xl disabled:opacity-40">
+          {busy ? 'Salvataggio…' : isNew ? 'Aggiungi servizio' : 'Salva'}
+        </button>
+        {isNew ? (
+          <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-xs font-semibold text-[#736266]">
+            Annulla
+          </button>
+        ) : (
+          <button type="button" onClick={remove} disabled={busy} className="px-3 py-2 text-xs font-semibold text-red-700 border border-red-200 rounded-xl flex items-center gap-1.5 disabled:opacity-40">
+            <Trash2 className="w-3.5 h-3.5" /> Elimina
+          </button>
+        )}
+        {msg && (
+          <span role="status" className={`text-xs font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            {msg.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Dipendenti / operatrici
+// ---------------------------------------------------------------------------
+const OperatorsEditor: React.FC = () => {
+  const { operators, customOperators } = useSiteConfig();
+  const fixed = operators.filter((o) => !o.custom);
+  return (
+    <section className={cardCls}>
+      <div className="flex items-center gap-2">
+        <UserPlus className="w-5 h-5 text-[#AA853D]" />
+        <h3 className="font-serif text-lg font-bold text-[#261F21]">Dipendenti e operatrici</h3>
+      </div>
+      <p className="text-[11px] text-[#8F7D82]">
+        Ogni dipendente ha la sua colonna nell'agenda e si può scegliere nella prenotazione online per i servizi che le assegni. Il suo accesso al gestionale si crea nella scheda Account Staff.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {fixed.map((o) => (
+          <span key={o.id} className="px-3 py-1.5 rounded-full bg-[#FAF5F5] border border-[#EEDFE1] text-xs font-semibold text-[#261F21]">
+            {o.name} <span className="font-normal text-[#8F7D82]">· {o.role}</span>
+          </span>
+        ))}
+      </div>
+      <div className="space-y-3">
+        {customOperators.map((o) => (
+          <CustomOperatorCard key={o.id} operator={o} />
+        ))}
+        <CustomOperatorCard key={`new-${customOperators.length}`} />
+      </div>
+    </section>
+  );
+};
+
+const CustomOperatorCard: React.FC<{ operator?: Operator }> = ({ operator }) => {
+  const { allServices } = useSiteConfig();
+  const isNew = !operator;
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({
+    name: operator?.name ?? '',
+    role: operator?.role ?? '',
+    specialization: operator?.specialization ?? '',
+    serviceIds: operator?.serviceIds ?? ([] as string[]),
+    active: operator?.active ?? true,
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const toggle = (id: string) =>
+    setF((x) => ({ ...x, serviceIds: x.serviceIds.includes(id) ? x.serviceIds.filter((s) => s !== id) : [...x.serviceIds, id] }));
+
+  const save = async () => {
+    if (f.name.trim().length < 2) return setMsg({ ok: false, text: 'Inserisci il nome.' });
+    setBusy(true);
+    setMsg(null);
+    try {
+      await saveCustomOperator(f, operator?.id);
+      setMsg({ ok: true, text: isNew ? 'Dipendente aggiunta' : 'Salvato' });
+      if (isNew) setOpen(false);
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg2(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!operator || !confirm(`Eliminare ${operator.name}? Gli appuntamenti già registrati restano nell'agenda. In alternativa togli la spunta "Attiva".`)) return;
+    setBusy(true);
+    try {
+      await deleteCustomOperator(operator.id);
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg2(e) });
+      setBusy(false);
+    }
+  };
+
+  if (isNew && !open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full py-3 rounded-2xl border-2 border-dashed border-[#DEC7CA] text-xs font-bold text-[#AA853D] flex items-center justify-center gap-2"
+      >
+        <UserPlus className="w-4 h-4" /> Nuova dipendente
+      </button>
+    );
+  }
+
+  return (
+    <div className={`p-4 rounded-2xl border ${isNew ? 'border-[#AA853D] bg-white' : 'border-[#EEDFE1] bg-[#FCF8F8]'} space-y-3`}>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Nome</span>
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} className={`${inputCls} w-full`} placeholder="Es. Giulia" />
+        </label>
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Ruolo</span>
+          <input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} className={`${inputCls} w-full`} placeholder="Es. Estetista" />
+        </label>
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Specializzazione</span>
+          <input value={f.specialization} onChange={(e) => setF({ ...f, specialization: e.target.value })} className={`${inputCls} w-full`} placeholder="Es. Manicure e pedicure" />
+        </label>
+      </div>
+
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-[#55474A]">Servizi che esegue (prenotabili online con lei)</span>
+        <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+          {allServices.map((s) => (
+            <label
+              key={s.id}
+              className={`px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
+                f.serviceIds.includes(s.id) ? 'bg-[#261F21] text-[#D8B268] border-[#261F21]' : 'bg-white text-[#55474A] border-[#DEC7CA]'
+              }`}
+            >
+              <input type="checkbox" className="sr-only" checked={f.serviceIds.includes(s.id)} onChange={() => toggle(s.id)} />
+              {s.name}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <label className="flex items-center gap-2 text-xs font-semibold text-[#261F21] cursor-pointer">
+        <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />
+        Attiva (compare in agenda e nella prenotazione)
+      </label>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={save} disabled={busy} className="px-4 py-2 bg-[#261F21] text-[#D8B268] text-xs font-bold rounded-xl disabled:opacity-40">
+          {busy ? 'Salvataggio…' : isNew ? 'Aggiungi dipendente' : 'Salva'}
+        </button>
+        {isNew ? (
+          <button type="button" onClick={() => setOpen(false)} className="px-3 py-2 text-xs font-semibold text-[#736266]">
+            Annulla
+          </button>
+        ) : (
+          <button type="button" onClick={remove} disabled={busy} className="px-3 py-2 text-xs font-semibold text-red-700 border border-red-200 rounded-xl flex items-center gap-1.5 disabled:opacity-40">
+            <Trash2 className="w-3.5 h-3.5" /> Elimina
           </button>
         )}
         {msg && (
