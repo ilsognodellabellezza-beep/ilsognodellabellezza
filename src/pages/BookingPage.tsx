@@ -15,11 +15,13 @@ import {
   Info
 } from 'lucide-react';
 import { Service, Operator, TreatmentCategory } from '../types';
-import { SERVICES, OPERATORS } from '../data/mockData';
-import { saveAppointment, getBookedSlots, BookedSlot, SlotTakenError } from '../lib/storage';
-import { toLocalDateStr, timeToMinutes } from '../lib/dates';
+import { OPERATORS } from '../data/mockData';
+import { saveAppointment, getBookedSlotsRange, BookedSlot, SlotTakenError } from '../lib/storage';
+import { toLocalDateStr, timeToMinutes, addDays } from '../lib/dates';
+import { useSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary } from '../lib/siteSettings';
 import { useAuth } from '../lib/auth';
 import { AddToCalendar } from '../components/AddToCalendar';
+import { MonthCalendar } from '../components/MonthCalendar';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { PageId } from '../types/navigation';
 
@@ -54,8 +56,17 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   // Cliente registrata: dati precompilati
   const { customer } = useAuth();
 
+  // Orari di apertura e prezzi impostati dal titolare nel gestionale
+  const { settings, services: SERVICES } = useSiteConfig();
+
   // Form states
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
+  // Si memorizza l'id: il servizio mostrato segue sempre prezzi e durate aggiornati
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const selectedService = useMemo(
+    () => SERVICES.find((s) => s.id === selectedServiceId) ?? null,
+    [SERVICES, selectedServiceId]
+  );
+  const setSelectedService = (s: Service | null) => setSelectedServiceId(s?.id ?? null);
   const [selectedOperator, setSelectedOperator] = useState<Operator | 'any'>('any');
   const [operatorFilterType, setOperatorFilterType] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -99,51 +110,43 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
   // Handle preselected service
   useEffect(() => {
     if (preselectedServiceId) {
-      const found = SERVICES.find((s) => s.id === preselectedServiceId);
-      if (found) {
-        setSelectedService(found);
-      }
+      setSelectedServiceId(preselectedServiceId);
     }
   }, [preselectedServiceId]);
 
-  // Compute next 14 open days (Martedì - Sabato, escludendo Domenica e Lunedì)
-  const availableDates = useMemo(() => {
-    const dates: { dateStr: string; label: string; dayName: string }[] = [];
-    const today = new Date();
-    let current = new Date(today);
+  // Si può prenotare da domani fino a "anticipo massimo" giorni (impostabile dal titolare, di base 6 mesi)
+  const minDate = useMemo(() => toLocalDateStr(addDays(new Date(), 1)), []);
+  const maxDate = useMemo(() => toLocalDateStr(addDays(new Date(), settings.maxAdvanceDays)), [settings.maxAdvanceDays]);
+  const [visibleMonth, setVisibleMonth] = useState(() => {
+    const t = addDays(new Date(), 1);
+    return new Date(t.getFullYear(), t.getMonth(), 1);
+  });
 
-    while (dates.length < 12) {
-      current.setDate(current.getDate() + 1);
-      const dayOfWeek = current.getDay(); // 0 is Sunday, 1 is Monday
-
-      if (dayOfWeek !== 0 && dayOfWeek !== 1) {
-        const dateStr = toLocalDateStr(current);
-        const dayName = new Intl.DateTimeFormat('it-IT', { weekday: 'short' }).format(current);
-        const dayNumber = current.getDate();
-        const monthName = new Intl.DateTimeFormat('it-IT', { month: 'short' }).format(current);
-
-        dates.push({
-          dateStr,
-          label: `${dayNumber} ${monthName}`,
-          dayName: dayName.toUpperCase(),
-        });
-      }
-    }
-    return dates;
-  }, []);
-
+  // Carica la disponibilità del mese mostrato (un solo viaggio al database per mese)
   useEffect(() => {
     let active = true;
+    const first = toLocalDateStr(visibleMonth);
+    const last = toLocalDateStr(new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0));
+    const from = first < minDate ? minDate : first;
+    if (from > last) return;
     setSlotsLoading(true);
     setSlotsError(null);
-    Promise.all(availableDates.map((d) => getBookedSlots(d.dateStr).then((slots) => [d.dateStr, slots] as const)))
-      .then((entries) => active && setBookingsByDate(Object.fromEntries(entries)))
+    getBookedSlotsRange(from, last)
+      .then((byDay) => {
+        if (!active) return;
+        // anche i giorni senza prenotazioni risultano "caricati"
+        const filled: Record<string, BookedSlot[]> = {};
+        for (let d = new Date(`${from}T12:00:00`); toLocalDateStr(d) <= last; d.setDate(d.getDate() + 1)) {
+          filled[toLocalDateStr(d)] = byDay[toLocalDateStr(d)] ?? [];
+        }
+        setBookingsByDate((prev) => ({ ...prev, ...filled }));
+      })
       .catch(() => active && setSlotsError('Impossibile verificare la disponibilità. Riprova o chiamaci al 345 393 8087.'))
       .finally(() => active && setSlotsLoading(false));
     return () => {
       active = false;
     };
-  }, [availableDates, slotsVersion]);
+  }, [visibleMonth, minDate, slotsVersion]);
 
   // Operatrici abilitate al servizio scelto
   const qualifiedOperators = useMemo(() => {
@@ -151,12 +154,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     const q = OPERATORS.filter((op) => selectedService.operatorTypes.includes(op.type));
     return q.length > 0 ? q : OPERATORS;
   }, [selectedService]);
-
-  const BASE_SLOTS = [
-    '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-    '12:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-    '17:00', '17:30', '18:00'
-  ];
 
   const isOperatorFree = (bookings: BookedSlot[], operatorId: string, time: string, duration: number) => {
     const start = timeToMinutes(time);
@@ -168,34 +165,29 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     });
   };
 
-  // Fasce di un giorno: libere se l'operatrice scelta (o almeno una abilitata) è disponibile per tutta la durata
+  // Fasce di un giorno: il servizio deve finire entro la chiusura (es. chiusura 18:30 → un'ora al massimo alle 17:30)
+  // e l'operatrice scelta (o almeno una abilitata) deve essere libera per tutta la durata
   const slotsForDate = (date: string) => {
     const bookings = bookingsByDate[date] ?? [];
     const duration = selectedService?.durationMinutes ?? 30;
-    const closing = timeToMinutes('18:30');
     const candidates = selectedOperator === 'any' ? qualifiedOperators : [selectedOperator];
-    return BASE_SLOTS.map((time) => ({
+    return slotsForDay(settings, date, duration).map((time) => ({
       time,
-      isAvailable:
-        timeToMinutes(time) + duration <= closing + 30 &&
-        candidates.some((op) => isOperatorFree(bookings, op.id, time, duration)),
+      isAvailable: candidates.some((op) => isOperatorFree(bookings, op.id, time, duration)),
     }));
   };
 
-  // Stato di ogni giorno: libero (verde) se c'è almeno una fascia disponibile, altrimenti occupato (rosso)
-  const dateStatus = useMemo(() => {
-    const map: Record<string, 'libero' | 'occupato'> = {};
-    if (slotsLoading || slotsError) return map;
-    availableDates.forEach((d) => {
-      map[d.dateStr] = slotsForDate(d.dateStr).some((sl) => sl.isAvailable) ? 'libero' : 'occupato';
-    });
-    return map;
-  }, [availableDates, bookingsByDate, selectedOperator, selectedService, slotsLoading, slotsError, qualifiedOperators]);
+  // Stato di un giorno: libero (verde) se c'è almeno una fascia disponibile, altrimenti occupato (rosso)
+  const getDateStatus = (dateStr: string): 'libero' | 'occupato' | undefined => {
+    if (!(dateStr in bookingsByDate)) return undefined;
+    return slotsForDate(dateStr).some((sl) => sl.isAvailable) ? 'libero' : 'occupato';
+  };
 
   const availableSlots = useMemo(() => {
-    if (!selectedDate || slotsLoading || slotsError) return [];
+    if (!selectedDate || !(selectedDate in bookingsByDate)) return [];
     return slotsForDate(selectedDate);
-  }, [selectedDate, selectedOperator, selectedService, bookingsByDate, slotsLoading, slotsError, qualifiedOperators]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, selectedOperator, selectedService, bookingsByDate, settings, qualifiedOperators]);
 
   // Filtered services
   const filteredServices = useMemo(() => {
@@ -678,7 +670,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       Seleziona Data e Orario
                     </h3>
                     <p className="text-xs text-[#55474A]">
-                      Salone aperto da Martedì a Sabato (09:00 - 18:30). Puoi scegliere più giorni. Domenica e Lunedì chiuso.
+                      Orari: {formatOpeningSummary(settings)}. Puoi prenotare qualsiasi giorno futuro, anche tra qualche mese, e scegliere più giorni insieme.
                     </p>
                   </div>
                   <button
@@ -690,11 +682,11 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                   </button>
                 </div>
 
-                {/* Selezione Giorni */}
+                {/* Selezione Giorni: calendario mensile, qualsiasi giorno futuro */}
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-xs font-semibold text-[#261F21] block">
-                      Scegli uno o più giorni (tocca per aggiungere):
+                      Scegli uno o più giorni, anche tra mesi (tocca per aggiungere):
                     </label>
                     <div className="flex items-center gap-3 text-[11px] text-[#55474A]">
                       <span className="flex items-center gap-1.5">
@@ -705,61 +697,35 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       </span>
                     </div>
                   </div>
-                  {slotsError && !selectedDate && (
+                  {slotsError && (
                     <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
                       {slotsError}
                     </p>
                   )}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
-                    {availableDates.map((item) => {
-                      const isActive = selectedDate === item.dateStr;
-                      const pickedTime = picks[item.dateStr];
-                      const isSelected = Boolean(pickedTime);
-                      const status = dateStatus[item.dateStr];
-                      const isFull = status === 'occupato';
-                      return (
-                        <button
-                          key={item.dateStr}
-                          disabled={isFull}
-                          aria-label={`${item.dayName} ${item.label}: ${isFull ? 'occupato' : status === 'libero' ? 'disponibile' : 'verifica in corso'}`}
-                          onClick={() => {
-                            if (isActive && isSelected) {
-                              // secondo tocco su un giorno già scelto: lo toglie
-                              setPicks((prev) => {
-                                const next = { ...prev };
-                                delete next[item.dateStr];
-                                return next;
-                              });
-                              setSelectedDate('');
-                            } else {
-                              setSelectedDate(item.dateStr);
-                            }
-                          }}
-                          className={`p-3 min-h-[76px] rounded-2xl border-2 text-center transition-all ${
-                            isSelected
-                              ? `bg-emerald-600 text-white border-emerald-700 shadow-md ${isActive ? 'ring-2 ring-emerald-300' : ''}`
-                              : isActive
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-600 ring-2 ring-emerald-300'
-                              : isFull
-                              ? 'bg-red-50 text-red-700 border-red-300 cursor-not-allowed'
-                              : status === 'libero'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                              : 'bg-white border-[#EEDFE1] text-[#261F21]'
-                          }`}
-                        >
-                          <span className={`block text-[10px] font-bold tracking-wider ${isSelected ? 'text-emerald-100' : ''}`}>
-                            {item.dayName}
-                          </span>
-                          <span className="block font-serif text-sm font-bold mt-0.5">
-                            {item.label}
-                          </span>
-                          <span className={`block text-[9px] font-semibold uppercase mt-0.5 ${isSelected ? 'text-emerald-100' : ''}`}>
-                            {pickedTime ? `ore ${pickedTime}` : isFull ? 'Occupato' : status === 'libero' ? 'Libero' : '…'}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <MonthCalendar
+                    month={visibleMonth}
+                    onMonthChange={setVisibleMonth}
+                    minDate={minDate}
+                    maxDate={maxDate}
+                    isOpenDay={(d) => isOpenOn(settings, d)}
+                    getStatus={getDateStatus}
+                    picks={picks}
+                    selectedDate={selectedDate}
+                    onSelect={(dateStr) => {
+                      if (selectedDate === dateStr && picks[dateStr]) {
+                        // secondo tocco su un giorno già scelto: lo toglie
+                        setPicks((prev) => {
+                          const next = { ...prev };
+                          delete next[dateStr];
+                          return next;
+                        });
+                        setSelectedDate('');
+                      } else {
+                        setSelectedDate(dateStr);
+                      }
+                    }}
+                  />
+                  {slotsLoading && <p className="text-[11px] text-[#8F7D82]">Verifica disponibilità in corso…</p>}
                 </div>
 
                 {/* Selezione Slot Orario */}
@@ -776,11 +742,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
 
                     {slotsLoading && (
                       <p className="text-xs text-[#8F7D82]">Verifica disponibilità in corso…</p>
-                    )}
-                    {slotsError && (
-                      <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
-                        {slotsError}
-                      </p>
                     )}
                     {bookingError && step === 3 && (
                       <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
@@ -843,7 +804,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         </span>
                       ))}
                     </div>
-                    {Object.keys(picks).length < availableDates.length && (
+                    {pickedList.length > 0 && (
                       <p className="text-[11px] text-[#8F7D82]">Puoi toccare altri giorni per prenotare più appuntamenti insieme.</p>
                     )}
                   </div>

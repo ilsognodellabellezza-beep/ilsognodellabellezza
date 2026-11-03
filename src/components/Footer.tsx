@@ -1,12 +1,14 @@
 import React from 'react';
 import { MapPin, Phone, Clock, ShieldCheck, User, Calendar } from 'lucide-react';
 import { PageId } from '../types/navigation';
+import { useSiteConfig, formatOpeningSummary } from '../lib/siteSettings';
 
 interface FooterProps {
   onNavigate: (page: PageId) => void;
 }
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+  const { settings } = useSiteConfig();
   const handleNav = (page: PageId) => {
     onNavigate(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -109,7 +111,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </p>
               <p className="flex items-start gap-2">
                 <Clock className="w-4 h-4 text-[#AA853D] shrink-0 mt-0.5" />
-                <span>Martedì – Sabato: 09:00 – 18:30 (Domenica e Lunedì Chiuso)</span>
+                <span>{formatOpeningSummary(settings)}</span>
               </p>
             </div>
 

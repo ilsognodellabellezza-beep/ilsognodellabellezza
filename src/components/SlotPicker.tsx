@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { getBookedSlots, BookedSlot } from '../lib/storage';
 import { timeToMinutes } from '../lib/dates';
+import { useSiteConfig, slotsForDay } from '../lib/siteSettings';
 
 interface SlotPickerProps {
   date: string;
@@ -13,12 +14,6 @@ interface SlotPickerProps {
   /** cambia quando serve ricaricare le prenotazioni (es. dopo un salvataggio) */
   refreshKey?: number;
 }
-
-const BASE_SLOTS = [
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '12:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-  '17:00', '17:30', '18:00',
-];
 
 const inputCls =
   'w-full px-3 py-2 text-xs border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D]';
@@ -33,6 +28,8 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
   durationMinutes,
   refreshKey = 0,
 }) => {
+  const { settings } = useSiteConfig();
+  const baseSlots = date ? slotsForDay(settings, date, durationMinutes) : [];
   const [booked, setBooked] = useState<BookedSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -95,7 +92,8 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
           {loading ? 'Verifica disponibilità…' : 'Fasce del giorno (tocca per scegliere):'}
         </p>
         <div className="grid grid-cols-5 gap-1.5">
-          {BASE_SLOTS.map((t) => {
+          {baseSlots.length === 0 && date && <p className="col-span-5 text-[11px] text-[#8F7D82]">Salone chiuso in questo giorno (puoi comunque inserire un orario a mano).</p>}
+          {baseSlots.map((t) => {
             const free = !loading && !failed && isFree(t);
             const busy = !loading && !failed && !free;
             const selected = t === time;

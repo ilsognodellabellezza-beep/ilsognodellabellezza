@@ -25,6 +25,8 @@ Esegui nel **SQL Editor** di Supabase, in ordine:
 2. `supabase/02-account-staff.sql`
 3. `supabase/03-permessi.sql`
 4. `supabase/04-account-clienti.sql`
+5. `supabase/05-galleria.sql`
+6. `supabase/06-gestione-sito.sql` (orari, prezzi e prenotazioni a lungo termine, modificabili dal gestionale)
 
 In **Authentication → Sign In / Providers → Email** disattiva *Confirm email* (a meno di configurare un SMTP personalizzato).
 

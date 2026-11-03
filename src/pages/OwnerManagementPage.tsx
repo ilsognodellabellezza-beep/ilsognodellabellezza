@@ -48,7 +48,9 @@ import { StaffAccountsPanel } from '../components/StaffAccountsPanel';
 import { GalleryManager } from '../components/GalleryManager';
 import { SlotPicker } from '../components/SlotPicker';
 import { toLocalDateStr, addDays } from '../lib/dates';
-import { OPERATORS, SERVICES } from '../data/mockData';
+import { OPERATORS } from '../data/mockData';
+import { SiteSettingsPanel } from '../components/SiteSettingsPanel';
+import { useSiteConfig } from '../lib/siteSettings';
 import { PageId } from '../types/navigation';
 
 interface OwnerManagementPageProps {
@@ -56,9 +58,10 @@ interface OwnerManagementPageProps {
 }
 
 export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavigate }) => {
-  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud' | 'account' | 'galleria'>('contabilita');
+  const [activeTab, setActiveTab] = useState<'agenda' | 'clienti' | 'contabilita' | 'cloud' | 'account' | 'galleria' | 'sito'>('contabilita');
   
   // Data states
+  const { allServices: SERVICES } = useSiteConfig();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
@@ -355,6 +358,17 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
           >
             <MessageSquare className="w-4 h-4 text-[#AA853D]" />
             <span>Promemoria & Recensioni{pendingReviews.length > 0 ? ` (${pendingReviews.length} da approvare)` : ''}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('sito')}
+            className={`py-2 px-4 rounded-xl transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'sito'
+                ? 'bg-[#261F21] text-[#D8B268]'
+                : 'bg-white text-[#736266] border border-[#EEDFE1]'
+            }`}
+          >
+            <span>⚙️ Gestione Sito</span>
           </button>
 
           <button
@@ -860,6 +874,8 @@ export const OwnerManagementPage: React.FC<OwnerManagementPageProps> = ({ onNavi
         )}
 
         {activeTab === 'galleria' && <GalleryManager />}
+
+        {activeTab === 'sito' && <SiteSettingsPanel />}
 
         {/* TAB 5: ACCOUNT STAFF */}
         {activeTab === 'account' && <StaffAccountsPanel currentUserId={profile?.id} />}

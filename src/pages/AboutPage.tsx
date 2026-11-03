@@ -12,12 +12,14 @@ import {
   Heart
 } from 'lucide-react';
 import { PageId } from '../types/navigation';
+import { useSiteConfig, WEEKDAY_NAMES, WEEKDAY_ORDER } from '../lib/siteSettings';
 
 interface AboutPageProps {
   onNavigate: (page: PageId) => void;
 }
 
 export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
+  const { settings } = useSiteConfig();
   return (
     <div className="py-12 lg:py-16 bg-[#FAF7F7] min-h-screen space-y-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -135,30 +137,21 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
             </div>
 
             <div className="text-xs sm:text-sm text-[#55474A] space-y-2.5">
-              <div className="flex justify-between py-1 border-b border-[#FAF5F5]">
-                <span>Martedì:</span>
-                <strong className="text-[#261F21]">09:00 – 18:30 (Orario Continuato)</strong>
-              </div>
-              <div className="flex justify-between py-1 border-b border-[#FAF5F5]">
-                <span>Mercoledì:</span>
-                <strong className="text-[#261F21]">09:00 – 18:30</strong>
-              </div>
-              <div className="flex justify-between py-1 border-b border-[#FAF5F5]">
-                <span>Giovedì:</span>
-                <strong className="text-[#261F21]">09:00 – 18:30</strong>
-              </div>
-              <div className="flex justify-between py-1 border-b border-[#FAF5F5]">
-                <span>Venerdì:</span>
-                <strong className="text-[#261F21]">09:00 – 18:30</strong>
-              </div>
-              <div className="flex justify-between py-1 border-b border-[#FAF5F5]">
-                <span>Sabato:</span>
-                <strong className="text-[#261F21]">09:00 – 18:30</strong>
-              </div>
-              <div className="flex justify-between py-1 text-[#8F7D82]">
-                <span>Domenica e Lunedì:</span>
-                <span className="font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded">Chiuso per Riposo Settimanale</span>
-              </div>
+              {WEEKDAY_ORDER.map((d) => {
+                const h = settings.hours[d];
+                return (
+                  <div key={d} className="flex justify-between py-1 border-b border-[#FAF5F5] last:border-0">
+                    <span>{WEEKDAY_NAMES[d]}:</span>
+                    {h.open ? (
+                      <strong className="text-[#261F21]">
+                        {h.breakFrom && h.breakTo ? `${h.from} – ${h.breakFrom} / ${h.breakTo} – ${h.to}` : `${h.from} – ${h.to}`}
+                      </strong>
+                    ) : (
+                      <span className="font-medium text-rose-700 bg-rose-50 px-2 py-0.5 rounded">Chiuso</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Check, ShieldAlert, ArrowRight, Search, Sparkles } from 'lucide-react';
 import { TreatmentCategory, Service } from '../types';
-import { SERVICES } from '../data/mockData';
+import { useSiteConfig } from '../lib/siteSettings';
 import { PageId } from '../types/navigation';
 
 interface TreatmentsPageProps {
@@ -9,6 +9,7 @@ interface TreatmentsPageProps {
 }
 
 export const TreatmentsPage: React.FC<TreatmentsPageProps> = ({ onNavigate }) => {
+  const { services: SERVICES } = useSiteConfig();
   const [activeCategory, setActiveCategory] = useState<TreatmentCategory | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 

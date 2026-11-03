@@ -13,13 +13,14 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { PageId } from '../types/navigation';
-import { SERVICES } from '../data/mockData';
+import { useSiteConfig, formatOpeningSummary } from '../lib/siteSettings';
 
 interface HomePageProps {
   onNavigate: (page: PageId, serviceId?: string) => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
+  const { settings } = useSiteConfig();
   return (
     <div className="space-y-16 lg:space-y-24 pb-16">
       
@@ -112,7 +113,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
 
               {/* Orari e Telefono Rapidi */}
               <div className="flex flex-wrap items-center gap-6 pt-2 text-xs text-[#736266]">
-                <span>⏰ Martedì - Sabato: 09:00 – 18:30</span>
+                <span>⏰ {formatOpeningSummary(settings)}</span>
                 <a href="tel:3453938087" className="font-semibold text-[#261F21] hover:text-[#AA853D]">
                   📞 345 393 8087
                 </a>
@@ -330,7 +331,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               Via delle Viole, 7/9 — 95124 Catania
             </h3>
             <p className="text-xs sm:text-sm text-[#55474A]">
-              Orari: Martedì – Sabato dalle 09:00 alle 18:30 (Domenica e Lunedì Chiuso)
+              Orari: {formatOpeningSummary(settings)}
             </p>
           </div>
 

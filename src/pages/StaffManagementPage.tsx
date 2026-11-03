@@ -28,7 +28,8 @@ import {
 } from '../lib/storage';
 import { useAuth } from '../lib/auth';
 import { toLocalDateStr, addDays } from '../lib/dates';
-import { OPERATORS, SERVICES } from '../data/mockData';
+import { OPERATORS } from '../data/mockData';
+import { useSiteConfig } from '../lib/siteSettings';
 import { PageId } from '../types/navigation';
 
 interface StaffManagementPageProps {
@@ -48,6 +49,7 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({ onNavi
 
   // Quick add appointment modal
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const { allServices: SERVICES } = useSiteConfig();
   const [newClientName, setNewClientName] = useState('');
   const [newClientPhone, setNewClientPhone] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');

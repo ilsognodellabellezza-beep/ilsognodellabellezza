@@ -235,6 +235,32 @@ export async function getBookedSlots(date: string): Promise<BookedSlot[]> {
   }));
 }
 
+/** Orari occupati di un intervallo di giorni (calendario mensile), raggruppati per data. */
+export async function getBookedSlotsRange(from: string, to: string): Promise<Record<string, BookedSlot[]>> {
+  const { data, error } = await supabase.rpc('get_booked_slots_range', { p_from: from, p_to: to });
+  if (error) {
+    // Script 06 non ancora eseguito: ripiega sulla lettura giorno per giorno
+    if (/get_booked_slots_range|function/i.test(error.message)) {
+      const days: string[] = [];
+      for (let d = new Date(`${from}T12:00:00`); toLocalDateStr(d) <= to && days.length < 62; d.setDate(d.getDate() + 1)) {
+        days.push(toLocalDateStr(d));
+      }
+      const entries = await Promise.all(days.map((day) => getBookedSlots(day).then((s) => [day, s] as const)));
+      return Object.fromEntries(entries);
+    }
+    fail('lettura disponibilità', error);
+  }
+  const out: Record<string, BookedSlot[]> = {};
+  (data ?? []).forEach((r: { slot_date: string; operator_id: string; start_time: string; duration_minutes: number }) => {
+    (out[r.slot_date] ??= []).push({
+      operatorId: r.operator_id,
+      startTime: hhmm(r.start_time),
+      durationMinutes: r.duration_minutes,
+    });
+  });
+  return out;
+}
+
 export async function updateAppointmentStatus(
   id: string,
   status: Appointment['status'],
