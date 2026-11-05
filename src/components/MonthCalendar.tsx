@@ -11,6 +11,8 @@ interface MonthCalendarProps {
   maxDate: string;
   /** il salone è aperto in quel giorno? */
   isOpenDay: (dateStr: string) => boolean;
+  /** giorno festivo (rosso): non prenotabile, salvo apertura straordinaria */
+  isRedDay?: (dateStr: string) => boolean;
   /** 'libero' | 'occupato' | undefined (non ancora verificato) */
   getStatus: (dateStr: string) => 'libero' | 'occupato' | undefined;
   /** data -> orario già scelto */
@@ -28,6 +30,7 @@ export const MonthCalendar: React.FC<MonthCalendarProps> = ({
   minDate,
   maxDate,
   isOpenDay,
+  isRedDay,
   getStatus,
   picks,
   selectedDate,
@@ -91,7 +94,9 @@ export const MonthCalendar: React.FC<MonthCalendarProps> = ({
           const disabled = !inRange || !open || status === 'occupato';
 
           let cls = 'bg-white border-[#EEDFE1] text-[#261F21]';
-          if (!inRange || !open) cls = 'bg-transparent border-transparent text-[#C9B8BC] cursor-not-allowed';
+          const red = !open && Boolean(isRedDay?.(dateStr));
+          if (red) cls = 'bg-red-50/60 border-transparent text-red-500 cursor-not-allowed';
+          else if (!inRange || !open) cls = 'bg-transparent border-transparent text-[#C9B8BC] cursor-not-allowed';
           else if (picked) cls = 'bg-emerald-600 text-white border-emerald-700 shadow-md';
           else if (status === 'occupato') cls = 'bg-red-50 text-red-600 border-red-300 cursor-not-allowed line-through';
           else if (status === 'libero') cls = 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100';
@@ -103,7 +108,7 @@ export const MonthCalendar: React.FC<MonthCalendarProps> = ({
               disabled={disabled}
               onClick={() => onSelect(dateStr)}
               aria-label={`${day} ${monthLabel}: ${
-                !open ? 'salone chiuso' : !inRange ? 'non prenotabile' : status === 'occupato' ? 'occupato' : picked ? `scelto ore ${picked}` : 'disponibile'
+                !open ? (red ? 'festivo, salone chiuso' : 'non disponibile') : !inRange ? 'non prenotabile' : status === 'occupato' ? 'occupato' : picked ? `scelto ore ${picked}` : 'disponibile'
               }`}
               className={`min-h-[44px] sm:min-h-[52px] rounded-xl border-2 flex flex-col items-center justify-center transition-all ${cls} ${
                 active ? 'ring-2 ring-emerald-400' : ''

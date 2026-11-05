@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { UserRole } from '../types';
 
 /** Le titolari accedono con nome utente: internamente diventa un indirizzo di questo dominio (nessuna email viene inviata). */
 export const USERNAME_DOMAIN = 'utenti.ilsognodellabellezza.it';
@@ -14,7 +13,6 @@ export function loginToEmail(login: string): string {
 export interface StaffProfile {
   id: string;
   fullName: string;
-  role: UserRole;
   operatorId: string | null;
   email: string;
   username: string | null;
@@ -60,14 +58,13 @@ async function loadProfile(session: Session | null): Promise<StaffProfile | null
   if (!session) return null;
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, full_name, role, operator_id, username, must_change_password')
+    .select('id, full_name, operator_id, username, must_change_password')
     .eq('id', session.user.id)
     .maybeSingle();
   if (error || !data) return null;
   return {
     id: data.id,
     fullName: data.full_name,
-    role: data.role,
     operatorId: data.operator_id,
     email: session.user.email ?? '',
     username: data.username ?? null,

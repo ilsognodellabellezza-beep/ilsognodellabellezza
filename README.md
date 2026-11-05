@@ -2,9 +2,9 @@
 
 Sito e gestionale del centro estetico **Il Sogno della Bellezza** di Chiara e Melania, Via delle Viole 7/9, Catania.
 
-- Sito pubblico: trattamenti, promo laser EPILED 818NM, recensioni, prenotazione online con disponibilità reale
+- Sito pubblico: trattamenti con foto e ricerca, promozioni con scadenza automatica, team, recensioni, prenotazione online con disponibilità reale, pulsante WhatsApp
 - Account clienti: registrazione, accesso, storico e annullamento prenotazioni
-- Gestionale staff (agenda e clienti) e titolare (incassi, contabilità, recensioni, account dipendenti)
+- Gestionale unico (un solo accesso, nessuna contabilità): agenda, clienti, promozioni, chiusure e aperture straordinarie, blocco appuntamenti, disponibilità del laser, foto, WhatsApp e QR code
 - Promemoria email automatico il giorno prima dell'appuntamento
 
 Tecnologie: React + Vite + Tailwind, Supabase (database e accessi), Vercel (hosting e invio promemoria), Resend (email).
@@ -28,6 +28,7 @@ Esegui nel **SQL Editor** di Supabase, in ordine:
 5. `supabase/05-galleria.sql`
 6. `supabase/06-gestione-sito.sql` (orari, prezzi e prenotazioni a lungo termine, modificabili dal gestionale)
 7. `supabase/07-servizi-dipendenti.sql` (nuovi servizi e nuove dipendenti aggiunti dal gestionale)
+8. `supabase/08-novita-sito-gestionale.sql` (account unico, promozioni, chiusure, blocchi, foto, laser, nuove categorie). **Prima di eseguirlo scarica i dati contabili** da Gestionale → Gestione sito → *Esporta archivio incassi*.
 
 In **Authentication → Sign In / Providers → Email** disattiva *Confirm email* (a meno di configurare un SMTP personalizzato).
 
@@ -41,5 +42,4 @@ Il promemoria email parte ogni giorno alle 08:00 UTC (`vercel.json → crons`).
 
 ## Account
 
-- Titolare: creato con `npm run create-accounts` (legge `scripts/accounts.json`, che non va mai pubblicato).
-- Dipendenti: si creano dal pannello titolare, scheda **Account Staff**.
+C'è un solo account di accesso al gestionale (nessun ruolo): si crea con `npm run create-accounts` (legge `scripts/accounts.json`, che non va mai pubblicato). Gli altri account vanno eliminati a mano dal database: le istruzioni sono in fondo a `supabase/08-novita-sito-gestionale.sql`.

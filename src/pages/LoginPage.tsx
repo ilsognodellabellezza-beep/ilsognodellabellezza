@@ -3,11 +3,7 @@ import { Lock, User, LogIn, Loader2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { isSupabaseConfigured } from '../lib/supabase';
 
-interface LoginPageProps {
-  area: 'dipendenti' | 'titolare';
-}
-
-export const LoginPage: React.FC<LoginPageProps> = ({ area }) => {
+export const LoginPage: React.FC = () => {
   const { signIn } = useAuth();
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -29,7 +25,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ area }) => {
         <div className="bg-[#261F21] px-8 py-8 text-center space-y-3">
           <img src="/brand/logo-cm-light.png" alt="" className="h-16 w-auto mx-auto" />
           <h1 className="font-serif text-2xl font-bold text-[#FAF7F7]">
-            {area === 'titolare' ? 'Area Titolare' : 'Gestionale Staff'}
+            Gestionale
           </h1>
           <p className="text-xs text-[#DEC7CA]">
             Accesso riservato al personale del salone.
@@ -46,7 +42,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ area }) => {
 
           <div className="space-y-1">
             <label htmlFor="login-email" className="text-xs font-semibold text-[#261F21]">
-              {area === 'titolare' ? 'Nome utente' : 'Email o nome utente'}
+              Email o nome utente
             </label>
             <div className="relative">
               <User className="w-4 h-4 text-[#8F7D82] absolute left-3 top-1/2 -translate-y-1/2" />

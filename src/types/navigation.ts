@@ -1,15 +1,12 @@
-import { Service, Operator, TreatmentCategory, Client } from '../types';
-
 export type PageId =
   | 'home'
   | 'trattamenti'
-  | 'laser'
+  | 'promo'
   | 'prenota'
   | 'recensioni'
   | 'galleria'
   | 'chi-siamo'
-  | 'gestionale-dipendenti'
-  | 'gestionale-titolare'
+  | 'gestionale'
   | 'account';
 
 export interface NavigationProps {

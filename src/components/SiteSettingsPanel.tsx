@@ -15,7 +15,10 @@ import {
   saveBookingSettings,
   saveServiceOverride,
   useSiteConfig,
+  CATEGORY_LIST,
 } from '../lib/siteSettings';
+import { ContactPanel, QrPanel } from './ContactQrPanel';
+import { TeamPhotosPanel, ServicePhotosPanel, AccountingExportPanel } from './PhotosPanel';
 import { SERVICES } from '../data/mockData';
 import { timeToMinutes } from '../lib/dates';
 
@@ -44,13 +47,18 @@ export const SiteSettingsPanel: React.FC = () => {
       <div>
         <h2 className="font-serif text-2xl font-bold text-[#261F21]">Gestione del sito</h2>
         <p className="text-xs text-[#55474A]">
-          Le modifiche valgono subito per il sito pubblico e per la prenotazione online: orari, giorni di apertura, prezzi e durate.
+          Le modifiche valgono subito per il sito pubblico e per la prenotazione online: orari, WhatsApp, foto, prezzi e durate.
         </p>
       </div>
       <HoursEditor key={loaded ? "ready" : "loading"} initial={settings} ready={loaded} />
+      <ContactPanel />
+      <QrPanel />
       <OperatorsEditor />
+      <TeamPhotosPanel />
       <CustomServicesEditor />
+      <ServicePhotosPanel />
       <ServicesEditor overrides={overrides} />
+      <AccountingExportPanel />
     </div>
   );
 };
@@ -340,13 +348,7 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
 // ---------------------------------------------------------------------------
 // Nuovi servizi
 // ---------------------------------------------------------------------------
-const CATEGORY_OPTIONS: { id: TreatmentCategory; label: string }[] = [
-  { id: 'laser', label: 'Epilazione Laser' },
-  { id: 'massaggi', label: 'Massaggi Donna' },
-  { id: 'sguardo', label: 'Ciglia & Sopracciglia' },
-  { id: 'viso', label: 'Viso Avanzato' },
-  { id: 'mani-piedi', label: 'Mani & Piedi' },
-];
+const CATEGORY_OPTIONS = CATEGORY_LIST;
 
 const CustomServicesEditor: React.FC = () => {
   const { customServices } = useSiteConfig();
@@ -553,7 +555,7 @@ const OperatorsEditor: React.FC = () => {
         <h3 className="font-serif text-lg font-bold text-[#261F21]">Dipendenti e operatrici</h3>
       </div>
       <p className="text-[11px] text-[#8F7D82]">
-        Ogni dipendente ha la sua colonna nell'agenda e si può scegliere nella prenotazione online per i servizi che le assegni. Il suo accesso al gestionale si crea nella scheda Account Staff.
+        Ogni dipendente ha la sua colonna nell'agenda e si può scegliere nella prenotazione online per i servizi che le assegni. Puoi caricare la sua foto qui sotto, nella sezione “Foto del team”.
       </p>
       <div className="flex flex-wrap gap-2">
         {fixed.map((o) => (

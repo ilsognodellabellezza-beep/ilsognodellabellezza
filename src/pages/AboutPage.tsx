@@ -13,13 +13,16 @@ import {
 } from 'lucide-react';
 import { PageId } from '../types/navigation';
 import { useSiteConfig, WEEKDAY_NAMES, WEEKDAY_ORDER } from '../lib/siteSettings';
+import { useSalon, whatsappUrl, formatPhone, operatorPhotoUrl } from '../lib/salon';
+import { OperatorAvatar } from '../components/ServicePhoto';
 
 interface AboutPageProps {
   onNavigate: (page: PageId) => void;
 }
 
 export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
-  const { settings } = useSiteConfig();
+  const { settings, operators } = useSiteConfig();
+  const { contact } = useSalon();
   return (
     <div className="py-12 lg:py-16 bg-[#FAF7F7] min-h-screen space-y-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
@@ -97,13 +100,13 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
 
               <div className="text-xs text-[#55474A] space-y-2 font-sans">
                 <p className="font-bold text-sm text-[#261F21]">VIA DELLE VIOLE, 7/9 - CATANIA</p>
-                <p className="font-medium">Tel: 345 393 8087 · info@ilsognodellabellezza.it</p>
+                <p className="font-medium">Tel: {formatPhone(contact.whatsapp)} · info@ilsognodellabellezza.it</p>
                 <p className="text-[11px] text-[#8F7D82]">www.ilsognodellabellezza.it</p>
               </div>
 
               <div className="pt-2 flex items-center justify-center gap-3">
                 <a
-                  href="https://wa.me/393453938087"
+                  href={whatsappUrl(undefined, contact.whatsapp)}
                   target="_blank"
                   rel="noreferrer"
                   className="px-4 py-2 bg-[#25D366] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:bg-[#20ba59]"
@@ -113,7 +116,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
                 </a>
 
                 <a
-                  href="tel:3453938087"
+                  href={`tel:+${contact.whatsapp}`}
                   className="px-4 py-2 bg-[#261F21] text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs hover:bg-[#191415]"
                 >
                   <Phone className="w-4 h-4 text-[#D8B268]" />
@@ -123,6 +126,31 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate }) => {
             </div>
           </div>
 
+        </div>
+
+        {/* Il nostro team */}
+        <div className="space-y-6 pt-4">
+          <div className="text-center space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-widest text-[#AA853D]">Le persone del salone</span>
+            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#261F21]">Il nostro team</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {operators.map((op) => (
+              <div key={op.id} className="bg-white rounded-3xl border border-[#EEDFE1] overflow-hidden text-center shadow-2xs">
+                <div className="aspect-square bg-[#F7EFEF] flex items-center justify-center">
+                  {operatorPhotoUrl(op.id) ? (
+                    <img src={operatorPhotoUrl(op.id)!} alt={op.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                  ) : (
+                    <OperatorAvatar operatorId={op.id} name={op.name} className="w-24 h-24 text-3xl" />
+                  )}
+                </div>
+                <div className="p-3 sm:p-4 space-y-0.5">
+                  <h3 className="font-serif text-base sm:text-lg font-bold text-[#261F21]">{op.name}</h3>
+                  <p className="text-xs font-semibold text-[#AA853D]">{op.role}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Informazioni Salone & Orari */}

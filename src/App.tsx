@@ -3,29 +3,26 @@ import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { HomePage } from './pages/HomePage';
 import { TreatmentsPage } from './pages/TreatmentsPage';
-import { LaserPage } from './pages/LaserPage';
+import { PromoPage } from './pages/PromoPage';
 import { BookingPage } from './pages/BookingPage';
 import { ReviewsPage } from './pages/ReviewsPage';
 import { AboutPage } from './pages/AboutPage';
 import { GalleryPage } from './pages/GalleryPage';
 // Il gestionale viene scaricato solo da chi ci accede
-const StaffManagementPage = lazy(() => import('./pages/StaffManagementPage').then((m) => ({ default: m.StaffManagementPage })));
-const OwnerManagementPage = lazy(() => import('./pages/OwnerManagementPage').then((m) => ({ default: m.OwnerManagementPage })));
+const ManagementPage = lazy(() => import('./pages/ManagementPage').then((m) => ({ default: m.ManagementPage })));
 import { LoginPage } from './pages/LoginPage';
 import { SetPasswordPage } from './pages/SetPasswordPage';
 import { AccountPage } from './pages/AccountPage';
 import { IntroSplash } from './components/IntroSplash';
+import { WhatsAppButton } from './components/WhatsAppButton';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { PageId } from './types/navigation';
 import { useAuth } from './lib/auth';
-import { Loader2, ShieldAlert } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
-const ManagementGate: React.FC<{
-  area: 'dipendenti' | 'titolare';
-  onNavigate: (page: PageId) => void;
-  children: React.ReactNode;
-}> = ({ area, onNavigate, children }) => {
-  const { loading, profile, signOut } = useAuth();
+/** Un solo account: chi è collegata accede al gestionale, senza ruoli. */
+const ManagementGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { loading, profile } = useAuth();
 
   if (loading) {
     return (
@@ -35,37 +32,9 @@ const ManagementGate: React.FC<{
     );
   }
 
-  if (!profile) return <LoginPage area={area} />;
+  if (!profile) return <LoginPage />;
 
   if (profile.mustChangePassword) return <SetPasswordPage />;
-
-  if (area === 'titolare' && profile.role !== 'titolare') {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center px-4">
-        <div className="max-w-md text-center space-y-4 bg-white border border-[#EEDFE1] rounded-3xl p-8 shadow-lg">
-          <ShieldAlert className="w-10 h-10 text-[#AA853D] mx-auto" />
-          <h1 className="font-serif text-xl font-bold text-[#261F21]">Area riservata alle titolari</h1>
-          <p className="text-sm text-[#55474A]">
-            Sei collegata come <strong>{profile.fullName}</strong> (dipendente): puoi usare il gestionale staff.
-          </p>
-          <div className="flex justify-center gap-3">
-            <button
-              onClick={() => onNavigate('gestionale-dipendenti')}
-              className="px-4 py-2 bg-[#261F21] text-[#FAF7F7] text-xs font-semibold rounded-xl"
-            >
-              Vai al gestionale staff
-            </button>
-            <button
-              onClick={signOut}
-              className="px-4 py-2 border border-[#DEC7CA] text-[#261F21] text-xs font-semibold rounded-xl"
-            >
-              Cambia account
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <Suspense
@@ -91,17 +60,23 @@ export default function App() {
       const validPages: PageId[] = [
         'home',
         'trattamenti',
-        'laser',
+        'promo',
         'prenota',
         'recensioni',
         'galleria',
         'chi-siamo',
-        'gestionale-dipendenti',
-        'gestionale-titolare',
+        'gestionale',
         'account'
       ];
-      if (validPages.includes(hash as PageId)) {
-        setCurrentPage(hash as PageId);
+      // vecchi collegamenti salvati dalle clienti
+      const legacy: Record<string, PageId> = {
+        laser: 'promo',
+        'gestionale-dipendenti': 'gestionale',
+        'gestionale-titolare': 'gestionale',
+      };
+      const page = (legacy[hash] ?? hash) as PageId;
+      if (validPages.includes(page)) {
+        setCurrentPage(page);
       }
     };
 
@@ -151,8 +126,8 @@ export default function App() {
           <TreatmentsPage onNavigate={navigateTo} />
         )}
 
-        {currentPage === 'laser' && (
-          <LaserPage onNavigate={navigateTo} />
+        {currentPage === 'promo' && (
+          <PromoPage onNavigate={navigateTo} />
         )}
 
         {currentPage === 'prenota' && (
@@ -174,15 +149,9 @@ export default function App() {
           <AboutPage onNavigate={navigateTo} />
         )}
 
-        {currentPage === 'gestionale-dipendenti' && (
-          <ManagementGate area="dipendenti" onNavigate={navigateTo}>
-            <StaffManagementPage onNavigate={navigateTo} />
-          </ManagementGate>
-        )}
-
-        {currentPage === 'gestionale-titolare' && (
-          <ManagementGate area="titolare" onNavigate={navigateTo}>
-            <OwnerManagementPage onNavigate={navigateTo} />
+        {currentPage === 'gestionale' && (
+          <ManagementGate>
+            <ManagementPage onNavigate={navigateTo} />
           </ManagementGate>
         )}
 
@@ -195,6 +164,9 @@ export default function App() {
 
       {/* Footer Elegante Multi-Pagina */}
       <Footer onNavigate={navigateTo} />
+
+      {/* WhatsApp sempre a portata di mano (non nel gestionale) */}
+      {currentPage !== 'gestionale' && <WhatsAppButton />}
     </div>
   );
 }

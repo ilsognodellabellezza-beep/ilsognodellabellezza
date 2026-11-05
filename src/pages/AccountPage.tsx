@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 import { loadMyAppointments, cancelMyBooking } from '../lib/storage';
+import { useSalon, formatPhone } from '../lib/salon';
 import { toLocalDateStr } from '../lib/dates';
 import { Appointment } from '../types';
 import { PageId } from '../types/navigation';
@@ -222,6 +223,7 @@ const AuthForms: React.FC = () => {
 // ---------------------------------------------------------------------------
 const CustomerArea: React.FC<{ onNavigate: (page: PageId) => void }> = ({ onNavigate }) => {
   const { customer, updateCustomer, signOut } = useAuth();
+  const { contact } = useSalon();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -380,7 +382,7 @@ const CustomerArea: React.FC<{ onNavigate: (page: PageId) => void }> = ({ onNavi
         )}
         {upcoming.length > 0 && (
           <p className="px-6 py-3 text-[11px] text-[#8F7D82] border-t border-[#F7EFEF]">
-            Puoi annullare online fino al giorno prima. Per il giorno stesso chiamaci al 345 393 8087.
+            Puoi annullare online fino al giorno prima. Per il giorno stesso chiamaci al {formatPhone(contact.whatsapp)}.
           </p>
         )}
       </section>

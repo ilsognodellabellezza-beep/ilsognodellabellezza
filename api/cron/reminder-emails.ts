@@ -2,7 +2,7 @@
  * Promemoria email il giorno prima dell'appuntamento.
  *
  * - GET  → chiamato ogni giorno da Vercel Cron (header Authorization: Bearer CRON_SECRET)
- * - POST → lanciato a mano dal pannello titolare (header Authorization: Bearer <token Supabase>)
+ * - POST → lanciato a mano dal gestionale (header Authorization: Bearer <token Supabase>)
  *
  * Variabili d'ambiente su Vercel: VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
  * RESEND_API_KEY, RESEND_FROM (opzionale), CRON_SECRET.
@@ -37,7 +37,7 @@ function formatDateIt(date: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function emailHtml(app: any): string {
+function emailHtml(app: any, phone: { tel: string; label: string }): string {
   const name = escapeHtml(app.client_name);
   const service = escapeHtml(app.service_name);
   const operator = escapeHtml(app.operator_name);
@@ -63,7 +63,7 @@ function emailHtml(app: any): string {
       </div>
       <p style="font-size: 13px; color: #736266; line-height: 1.5;">
         Per spostare o annullare l'appuntamento avvisaci almeno 4 ore prima chiamando o scrivendo su WhatsApp al
-        <a href="tel:3453938087" style="color: #AA853D; text-decoration: none; font-weight: bold;">345 393 8087</a>.
+        <a href="tel:+${phone.tel}" style="color: #AA853D; text-decoration: none; font-weight: bold;">${phone.label}</a>.
       </p>
       <div style="margin-top: 28px; text-align: center;">
         <a href="https://maps.google.com/?q=Via+delle+Viole+7+Catania" style="background: #261F21; color: #FAF7F7; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 500; display: inline-block;">
@@ -72,7 +72,7 @@ function emailHtml(app: any): string {
       </div>
     </div>
     <div style="background: #FAF7F7; padding: 16px; text-align: center; border-top: 1px solid #EEDFE1; font-size: 12px; color: #8F7D82;">
-      Il Sogno della Bellezza · Via delle Viole, 7/9 - 95124 Catania (CT) · Tel: 345 393 8087
+      Il Sogno della Bellezza · Via delle Viole, 7/9 - 95124 Catania (CT) · Tel: ${phone.label}
     </div>
   </div>`;
 }
@@ -83,11 +83,11 @@ async function isAuthorized(request: Request, supabase: SupabaseClient): Promise
   if (!token) return false;
   if (CRON_SECRET && token === CRON_SECRET) return true;
 
-  // Token di sessione Supabase: consentito solo alle titolari
+  // Token di sessione Supabase: consentito a chi ha accesso al gestionale (account unico)
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) return false;
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).maybeSingle();
-  return (profile as { role?: string } | null)?.role === 'titolare';
+  const { data: profile } = await supabase.from('profiles').select('id').eq('id', data.user.id).maybeSingle();
+  return Boolean(profile);
 }
 
 async function run(request: Request): Promise<Response> {
@@ -96,6 +96,15 @@ async function run(request: Request): Promise<Response> {
 
   if (!(await isAuthorized(request, supabase))) return json({ error: 'Non autorizzato.' }, 401);
   if (!RESEND_API_KEY) return json({ error: 'RESEND_API_KEY non configurata: impossibile inviare email.' }, 500);
+
+  // numero di telefono/WhatsApp impostato dal gestionale (predefinito: quello storico del salone)
+  const { data: contactRow } = await supabase.from('site_settings').select('value').eq('key', 'contact').maybeSingle();
+  const digits = String((contactRow?.value as { whatsapp?: string } | undefined)?.whatsapp ?? '393453938087').replace(/\D/g, '');
+  const national = digits.replace(/^39/, '');
+  const phone = {
+    tel: digits,
+    label: national.length === 10 ? `${national.slice(0, 3)} ${national.slice(3, 6)} ${national.slice(6)}` : digits,
+  };
 
   const tomorrow = tomorrowInRome();
   const { data: appointments, error } = await supabase
@@ -122,7 +131,7 @@ async function run(request: Request): Promise<Response> {
           from: RESEND_FROM,
           to: [app.client_email],
           subject: `Promemoria: il tuo appuntamento di domani (${app.service_name})`,
-          html: emailHtml(app),
+          html: emailHtml(app, phone),
         }),
       });
       const body = await res.json().catch(() => ({}));

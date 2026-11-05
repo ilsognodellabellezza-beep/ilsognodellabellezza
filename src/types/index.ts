@@ -1,11 +1,11 @@
 export type TreatmentCategory =
   | 'laser'
   | 'viso'
-  | 'massaggi'
-  | 'sguardo'
-  | 'mani-piedi'
   | 'corpo'
-  | 'epilazione';
+  | 'sguardo'
+  | 'mani'
+  | 'pedicure'
+  | 'makeup';
 
 export interface Service {
   id: string;
@@ -62,7 +62,6 @@ export interface Appointment {
   notes?: string;
   reminderSent?: boolean;
   createdAt: string;
-  paymentMethod?: 'contanti' | 'pos' | 'bonifico' | 'non_saldato';
 }
 
 export interface Client {
@@ -73,7 +72,6 @@ export interface Client {
   notes?: string;
   allergies?: string;
   totalVisits: number;
-  totalSpent: number;
   lastVisitDate?: string;
   preferredOperatorId?: string;
 }
@@ -89,13 +87,3 @@ export interface Review {
   source: 'Google' | 'Fresha' | 'Verificata';
 }
 
-export interface FinancialSummary {
-  todayRevenue: number;
-  monthRevenue: number;
-  yearRevenue: number;
-  completedAppointmentsCount: number;
-  averageTicket: number;
-  topServices: { name: string; revenue: number; count: number }[];
-}
-
-export type UserRole = 'dipendente' | 'titolare';

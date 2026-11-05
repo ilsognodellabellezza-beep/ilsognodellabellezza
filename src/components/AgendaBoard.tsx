@@ -2,7 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, ListOrdered, Phone, Plus, X, Eye } from 'lucide-react';
 import { Appointment, AppointmentStatus } from '../types';
 import { addDays, timeToMinutes, toLocalDateStr } from '../lib/dates';
-import { isOpenOn, minutesToTime, useSiteConfig, weekdayOf } from '../lib/siteSettings';
+import { isOpenOn, minutesToTime, useSiteConfig } from '../lib/siteSettings';
+import { useSalon, dayStatus } from '../lib/salon';
+import { OperatorAvatar } from './ServicePhoto';
 
 /** Colori delle colonne, come nell'agenda di carta (azzurro, giallo, verde, rosso, …). */
 const COLUMN_COLORS = [
@@ -30,8 +32,6 @@ const fmtLong = (d: string) =>
 
 interface AgendaBoardProps {
   appointments: Appointment[];
-  /** il titolare vede i prezzi, i dipendenti no */
-  showPrices?: boolean;
   onStatusChange: (id: string, status: AppointmentStatus) => void;
   /** clic su una fascia libera: apre il nuovo appuntamento precompilato */
   onAddAt: (date: string, time: string, operatorId: string) => void;
@@ -39,8 +39,9 @@ interface AgendaBoardProps {
 }
 
 /** Agenda giornaliera a colonne, una per operatrice, righe da 30 minuti: come l'agenda cartacea del salone. */
-export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, showPrices, onStatusChange, onAddAt, onPreviewEmail }) => {
+export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, onStatusChange, onAddAt, onPreviewEmail }) => {
   const { operators, settings } = useSiteConfig();
+  const { blocks } = useSalon();
   const [date, setDate] = useState(toLocalDateStr());
   const [showCancelled, setShowCancelled] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -74,9 +75,9 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, showPric
   for (let m = startMin; m < endMin; m += 30) slots.push(m);
 
   // Fuori orario di apertura (o in pausa) le righe sono più scure
-  const dayHours = settings.hours[weekdayOf(date)];
+  const dayHours = dayStatus(settings, date).hours;
   const isClosedSlot = (m: number) => {
-    if (!dayHours.open) return true;
+    if (!dayHours || !dayHours.open) return true;
     const from = timeToMinutes(dayHours.from);
     const to = timeToMinutes(dayHours.to);
     if (m < from || m + 30 > to) return true;
@@ -118,6 +119,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, showPric
           <p className="text-[11px] text-[#8F7D82]">
             {visible.length} {visible.length === 1 ? 'appuntamento' : 'appuntamenti'}
             {!isOpenOn(settings, date) && ' · salone chiuso'}
+            {blocks.some((b) => date >= b.startDate && date <= b.endDate && b.operatorId === null && !b.fromTime) && ' · giorno bloccato'}
             {cancelledCount > 0 && (
               <>
                 {' · '}
@@ -155,9 +157,10 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, showPric
               <div key={col.id} className="flex-1 min-w-[132px] sm:min-w-[150px] border-r border-[#EEDFE1] last:border-r-0">
                 <div
                   style={{ borderBottom: `3px solid ${color.line}`, background: color.tint, color: color.text }}
-                  className="h-12 flex items-center justify-center px-2 font-serif font-bold text-sm text-center leading-tight"
+                  className="h-12 flex items-center justify-center gap-1.5 px-1.5 font-serif font-bold text-sm text-center leading-tight"
                 >
-                  {col.name}
+                  <OperatorAvatar operatorId={col.id} name={col.name} className="w-8 h-8 text-[10px]" />
+                  <span className="truncate">{col.name}</span>
                 </div>
                 <div className="relative">
                   {slots.map((m, i) => (
@@ -174,6 +177,28 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, showPric
                       <Plus className="w-3.5 h-3.5 absolute right-1 top-1/2 -translate-y-1/2 text-[#AA853D] opacity-0 group-hover:opacity-100" />
                     </button>
                   ))}
+
+                  {blocks
+                    .filter((b) => date >= b.startDate && date <= b.endDate && (b.operatorId === null || b.operatorId === col.id))
+                    .map((b) => {
+                      const from = b.fromTime ? Math.max(timeToMinutes(b.fromTime), startMin) : startMin;
+                      const to = b.toTime ? Math.min(timeToMinutes(b.toTime), endMin) : endMin;
+                      if (to <= from) return null;
+                      return (
+                        <div
+                          key={b.id}
+                          title={b.note ? `Bloccato: ${b.note}` : 'Orario bloccato'}
+                          style={{
+                            top: ((from - startMin) / 30) * ROW,
+                            height: ((to - from) / 30) * ROW,
+                            backgroundImage: 'repeating-linear-gradient(45deg, rgba(138,59,73,.16) 0 6px, rgba(138,59,73,.04) 6px 12px)',
+                          }}
+                          className="absolute inset-x-0 z-[5] pointer-events-none border-y border-[#8A3B49]/30 flex items-start justify-center pt-1"
+                        >
+                          <span className="text-[10px] font-bold text-[#8A3B49] bg-white/80 rounded px-1">Bloccato</span>
+                        </div>
+                      );
+                    })}
 
                   {colApps.map((a) => {
                     const st = timeToMinutes(a.time);
@@ -239,8 +264,10 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, showPric
                 <CalendarDays className="w-4 h-4 text-[#AA853D]" />
                 <span className="capitalize">{fmtLong(opened.date)}</span> · <strong>{opened.time}–{minutesToTime(timeToMinutes(opened.time) + opened.durationMinutes)}</strong> ({opened.durationMinutes} min)
               </p>
-              <p><strong className="text-[#261F21]">{opened.serviceName}</strong> con <strong className="text-[#261F21]">{opened.operatorName}</strong></p>
-              {showPrices && <p>Importo: <strong className="font-serif text-[#261F21]">€{opened.servicePrice.toFixed(2)}</strong></p>}
+              <p className="flex items-center gap-2">
+                <OperatorAvatar operatorId={opened.operatorId} name={opened.operatorName} className="w-10 h-10 text-xs" />
+                <span><strong className="text-[#261F21]">{opened.serviceName}</strong> con <strong className="text-[#261F21]">{opened.operatorName}</strong></span>
+              </p>
               <p className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-[#AA853D]" />
                 <a href={`tel:${opened.clientPhone}`} className="font-bold text-[#261F21] hover:underline">{opened.clientPhone}</a>

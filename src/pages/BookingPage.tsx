@@ -15,9 +15,11 @@ import {
   Info
 } from 'lucide-react';
 import { Service, Operator, TreatmentCategory } from '../types';
+import { useSalon, loadSalonData, isBlockedSlot, isLaserService, laserAllowsSlot, laserOpenOn, dayStatus, whatsappUrl, formatPhone } from '../lib/salon';
+import { ServicePhoto, OperatorAvatar } from '../components/ServicePhoto';
 import { saveAppointment, getBookedSlotsRange, BookedSlot, SlotTakenError } from '../lib/storage';
 import { toLocalDateStr, timeToMinutes, addDays } from '../lib/dates';
-import { useSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary, operatorsForService } from '../lib/siteSettings';
+import { useSiteConfig, loadSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary, operatorsForService, CATEGORY_LIST } from '../lib/siteSettings';
 import { useAuth } from '../lib/auth';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { MonthCalendar } from '../components/MonthCalendar';
@@ -57,6 +59,14 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
 
   // Orari di apertura e prezzi impostati dal titolare nel gestionale
   const { settings, services: SERVICES, operators: OPERATORS } = useSiteConfig();
+  const { contact } = useSalon();
+  const phoneLabel = formatPhone(contact.whatsapp);
+
+  // chiusure, blocchi e giorni del laser cambiano dal gestionale: all'apertura si rileggono sempre
+  useEffect(() => {
+    loadSiteConfig(true).catch(() => undefined);
+    loadSalonData(true).catch(() => undefined);
+  }, []);
 
   // Form states
   // Si memorizza l'id: il servizio mostrato segue sempre prezzi e durate aggiornati
@@ -139,7 +149,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
         }
         setBookingsByDate((prev) => ({ ...prev, ...filled }));
       })
-      .catch(() => active && setSlotsError('Impossibile verificare la disponibilità. Riprova o chiamaci al 345 393 8087.'))
+      .catch(() => active && setSlotsError(`Impossibile verificare la disponibilità. Riprova o chiamaci al ${phoneLabel}.`))
       .finally(() => active && setSlotsLoading(false));
     return () => {
       active = false;
@@ -168,10 +178,14 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     const bookings = bookingsByDate[date] ?? [];
     const duration = selectedService?.durationMinutes ?? 30;
     const candidates = selectedOperator === 'any' ? qualifiedOperators : [selectedOperator];
-    return slotsForDay(settings, date, duration).map((time) => ({
-      time,
-      isAvailable: candidates.some((op) => isOperatorFree(bookings, op.id, time, duration)),
-    }));
+    const laser = isLaserService(selectedService);
+    return slotsForDay(settings, date, duration)
+      // il laser è in affitto: solo nei giorni e negli orari impostati
+      .filter((time) => !laser || laserAllowsSlot(date, time, duration))
+      .map((time) => ({
+        time,
+        isAvailable: candidates.some((op) => isOperatorFree(bookings, op.id, time, duration) && !isBlockedSlot(date, time, duration, op.id)),
+      }));
   };
 
   // Stato di un giorno: libero (verde) se c'è almeno una fascia disponibile, altrimenti occupato (rosso)
@@ -179,23 +193,23 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     if (!(dateStr in bookingsByDate)) return undefined;
     return slotsForDate(dateStr).some((sl) => sl.isAvailable) ? 'libero' : 'occupato';
   };
+  const isLaserSelected = isLaserService(selectedService);
 
   const availableSlots = useMemo(() => {
     if (!selectedDate || !(selectedDate in bookingsByDate)) return [];
     return slotsForDate(selectedDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate, selectedOperator, selectedService, bookingsByDate, settings, qualifiedOperators]);
+  }, [selectedDate, selectedOperator, selectedService, bookingsByDate, settings, qualifiedOperators, contact]);
 
   // Filtered services
   const filteredServices = useMemo(() => {
     return SERVICES.filter((s) => {
       const matchesCategory = serviceCategory === 'all' || s.category === serviceCategory;
-      const matchesSearch =
-        s.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
-        s.description.toLowerCase().includes(serviceSearch.toLowerCase());
+      const q = serviceSearch.toLowerCase().trim();
+      const matchesSearch = !q || s.name.toLowerCase().includes(q) || s.categoryLabel.toLowerCase().includes(q) || s.description.toLowerCase().includes(q);
       return matchesCategory && matchesSearch;
     });
-  }, [serviceCategory, serviceSearch]);
+  }, [SERVICES, serviceCategory, serviceSearch]);
 
   // Filtered operators
   const filteredOperators = qualifiedOperators;
@@ -206,7 +220,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     }
 
     if (selectedService.onlyWomen && !acknowledgedWomenOnly) {
-      setBookingError('Per confermare questo massaggio, è necessario confermare che il trattamento è per una cliente donna.');
+      setBookingError('Per confermare questo trattamento, è necessario confermare che il trattamento è per una cliente donna.');
       return;
     }
 
@@ -262,7 +276,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
           } else {
             setBookingError(
               (done.length > 0 ? `Registrate ${done.length} prenotazioni su ${pickedList.length} (codici: ${done.map((d) => d.code).join(', ')}). ` : '') +
-                'Non siamo riusciti a registrare le altre. Riprova o chiamaci al 345 393 8087.'
+                `Non siamo riusciti a registrare le altre. Riprova o chiamaci al ${phoneLabel}.`
             );
           }
           return;
@@ -414,23 +428,16 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       type="text"
                       value={serviceSearch}
                       onChange={(e) => setServiceSearch(e.target.value)}
-                      placeholder="Cerca servizio (es. Laser, Massaggio, Ciglia, Viso)..."
+                      placeholder="Cerca servizio o categoria (es. viso, pedicure, ciglia)…"
                       className="w-full pl-9.5 pr-4 py-2.5 text-xs sm:text-sm bg-white border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D]"
                     />
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 p-1 bg-[#FAF5F5] rounded-xl text-xs">
-                    {[
-                      { id: 'all', label: 'Tutti i Servizi' },
-                      { id: 'laser', label: 'Laser EPILED 818NM' },
-                      { id: 'massaggi', label: 'Massaggi (Solo Donna)' },
-                      { id: 'sguardo', label: 'Ciglia & Sopracciglia' },
-                      { id: 'viso', label: 'Viso Avanzato' },
-                      { id: 'mani-piedi', label: 'Mani & Piedi' },
-                    ].map((cat) => (
+                    {[{ id: 'all', label: 'Tutti i Servizi' }, ...CATEGORY_LIST.filter((c) => SERVICES.some((s) => s.category === c.id))].map((cat) => (
                       <button
                         key={cat.id}
-                        onClick={() => setServiceCategory(cat.id as any)}
+                        onClick={() => setServiceCategory(cat.id as TreatmentCategory | 'all')}
                         className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
                           serviceCategory === cat.id
                             ? 'bg-[#261F21] text-[#D8B268] shadow-xs'
@@ -461,8 +468,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                             : 'bg-white hover:bg-[#FAF7F7] border-[#EEDFE1]'
                         }`}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="space-y-1">
+                        <div className="flex items-start justify-between gap-3 sm:gap-4">
+                          <ServicePhoto serviceId={service.id} name={service.name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl shrink-0" />
+                          <div className="space-y-1 flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-[11px] font-semibold text-[#AA853D] uppercase tracking-wide">
                                 {service.categoryLabel}
@@ -511,7 +519,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                           <div className="mt-3 p-3 rounded-xl bg-[#FAF0F2] border border-[#DEC7CA] text-xs text-[#5C242E] flex items-start gap-2">
                             <ShieldAlert className="w-4 h-4 text-[#8A3B49] shrink-0 mt-0.5" />
                             <span>
-                              <strong>Specifica Massaggi Salone:</strong> Questo trattamento corpo viene eseguito
+                              <strong>Trattamento corpo, solo donna:</strong> viene eseguito
                               da operatrici qualificate ed è dedicato unicamente al pubblico femminile.
                             </span>
                           </div>
@@ -599,9 +607,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         }`}
                       >
                         <div className="flex items-start justify-between">
-                          <div className="w-11 h-11 rounded-full bg-[#261F21] text-[#D8B268] flex items-center justify-center font-serif font-bold text-base border border-[#AA853D]/40">
-                            {op.name.substring(0, 2).toUpperCase()}
-                          </div>
+                          <OperatorAvatar operatorId={op.id} name={op.name} className="w-16 h-16 text-xl" />
                           {isSelected && <CheckCircle2 className="w-5 h-5 text-[#AA853D]" />}
                         </div>
                         <div className="mt-3 space-y-1">
@@ -662,6 +668,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       <span className="flex items-center gap-1.5">
                         <span className="w-3 h-3 rounded-full bg-red-400 border border-red-600" /> Occupato
                       </span>
+                      <span className="flex items-center gap-1.5 text-red-500 font-bold">
+                        <span className="w-3 h-3 rounded-full bg-red-100" /> Festivo
+                      </span>
                     </div>
                   </div>
                   {slotsError && (
@@ -669,12 +678,18 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       {slotsError}
                     </p>
                   )}
+                  {isLaserSelected && (
+                    <p className="text-[11px] text-[#5C242E] bg-[#FAF0F2] border border-[#DEC7CA] rounded-xl p-2.5">
+                      Il laser è disponibile solo in alcuni giorni: i giorni non selezionabili non hanno il laser in sede.
+                    </p>
+                  )}
                   <MonthCalendar
                     month={visibleMonth}
                     onMonthChange={setVisibleMonth}
                     minDate={minDate}
                     maxDate={maxDate}
-                    isOpenDay={(d) => isOpenOn(settings, d)}
+                    isOpenDay={(d) => isOpenOn(settings, d) && (!isLaserSelected || laserOpenOn(d))}
+                    isRedDay={(d) => dayStatus(settings, d).reason === 'festivo'}
                     getStatus={getDateStatus}
                     picks={picks}
                     selectedDate={selectedDate}
@@ -921,8 +936,8 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         className="mt-1 w-4 h-4 text-[#8A3B49] rounded border-gray-300 focus:ring-[#8A3B49]"
                       />
                       <label htmlFor="women-only-booking-page" className="text-xs text-[#5C242E] leading-relaxed cursor-pointer">
-                        <strong>Dichiarazione Policy Centro:</strong> Confermo che la cliente beneficiaria del massaggio è di sesso femminile.
-                        Prendo atto che il servizio massaggi de <em>Il Sogno della Bellezza</em> a Catania è riservato esclusivamente al pubblico femminile.
+                        <strong>Dichiarazione Policy Centro:</strong> Confermo che la cliente beneficiaria del trattamento è di sesso femminile.
+                        Prendo atto che i trattamenti corpo de <em>Il Sogno della Bellezza</em> a Catania sono riservati esclusivamente al pubblico femminile.
                       </label>
                     </div>
                   </div>
@@ -1009,7 +1024,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         date={b.date}
                         time={b.time}
                         durationMinutes={selectedService.durationMinutes}
-                        description={`Codice prenotazione: ${b.code}\nOperatrice: ${b.operatorName}\nPer modifiche: 345 393 8087`}
+                        description={`Codice prenotazione: ${b.code}\nOperatrice: ${b.operatorName}\nPer modifiche: ${phoneLabel}`}
                       />
                     ))}
                   </div>
@@ -1021,6 +1036,18 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                     Il giorno prima di ogni appuntamento riceverai un promemoria su <strong>{clientEmail}</strong>.
                   </span>
                 </div>
+
+                <a
+                  href={whatsappUrl(
+                    `Ciao! Ho prenotato ${selectedService?.name ?? 'un trattamento'} (codice ${confirmedBookings.map((x) => x.code).join(', ')}). Vorrei un'informazione.`,
+                    contact.whatsapp
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#25D366] hover:bg-[#1EBE5A] text-white text-xs font-bold rounded-xl shadow"
+                >
+                  Scrivici su WhatsApp
+                </a>
 
                 <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
                   <button

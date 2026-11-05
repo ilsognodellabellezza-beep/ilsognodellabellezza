@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { PageId } from '../types/navigation';
 import { useSiteConfig, formatOpeningSummary } from '../lib/siteSettings';
+import { useSalon, whatsappUrl, formatPhone } from '../lib/salon';
+import { PromoCard } from './PromoPage';
 
 interface HomePageProps {
   onNavigate: (page: PageId, serviceId?: string) => void;
@@ -21,6 +23,7 @@ interface HomePageProps {
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   const { settings } = useSiteConfig();
+  const { activePromotions, contact } = useSalon();
   return (
     <div className="space-y-16 lg:space-y-24 pb-16">
       
@@ -68,7 +71,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               {/* Pillole Punti di Forza */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <div
-                  onClick={() => onNavigate('laser')}
+                  onClick={() => onNavigate('trattamenti')}
                   className="p-3.5 rounded-xl bg-white/80 border border-[#EEDFE1] shadow-2xs hover:border-[#AA853D] cursor-pointer transition-colors"
                 >
                   <span className="block text-xs font-bold text-[#AA853D]">Laser EPILED 818NM</span>
@@ -102,20 +105,22 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                   <span>Prenota un Trattamento</span>
                 </button>
 
-                <button
-                  onClick={() => onNavigate('laser')}
-                  className="inline-flex items-center gap-2 px-6 py-3.5 bg-white hover:bg-[#F7EFEF] border border-[#DEC7CA] text-[#261F21] text-sm font-medium rounded-lg shadow-2xs transition-colors hover:border-[#AA853D]"
-                >
-                  <span>Scopri Promo Laser</span>
-                  <span className="text-xs font-bold text-[#AA853D]">€119,99</span>
-                </button>
+                {activePromotions.length > 0 && (
+                  <button
+                    onClick={() => onNavigate('promo')}
+                    className="inline-flex items-center gap-2 px-6 py-3.5 bg-white hover:bg-[#F7EFEF] border border-[#DEC7CA] text-[#261F21] text-sm font-medium rounded-lg shadow-2xs transition-colors hover:border-[#AA853D]"
+                  >
+                    <span>Scopri le Promo</span>
+                    <span className="text-xs font-bold text-[#AA853D]">{activePromotions.length === 1 ? '1 attiva' : activePromotions.length + ' attive'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Orari e Telefono Rapidi */}
               <div className="flex flex-wrap items-center gap-6 pt-2 text-xs text-[#736266]">
                 <span>⏰ {formatOpeningSummary(settings)}</span>
-                <a href="tel:3453938087" className="font-semibold text-[#261F21] hover:text-[#AA853D]">
-                  📞 345 393 8087
+                <a href={`tel:+${contact.whatsapp}`} className="font-semibold text-[#261F21] hover:text-[#AA853D]">
+                  📞 {formatPhone(contact.whatsapp)}
                 </a>
               </div>
 
@@ -144,61 +149,28 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
         </div>
       </section>
 
-      {/* 2. ANTEPRIMA PROMO LASER EPILED (Porta alla pagina Laser) */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-[#261F21] text-[#FAF7F7] rounded-3xl p-6 sm:p-10 lg:p-12 border border-[#AA853D]/30 shadow-xl overflow-hidden relative">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            
-            <div className="lg:col-span-6 space-y-4">
-              <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#D8B268]">
-                Pagina Dedicata Epilazione Laser
-              </span>
-              <h2 className="font-serif text-2xl sm:text-4xl font-bold text-[#FAF7F7]">
-                Promo Total Body Donna con Laser EPILED 818NM
-              </h2>
-              <div className="flex items-baseline gap-3">
-                <span className="font-serif text-3xl sm:text-4xl font-bold text-[#D8B268]">
-                  €119,99
-                </span>
-                <span className="text-sm text-[#8F7D82] line-through">€180,00</span>
-                <span className="text-xs bg-[#D8B268] text-[#191415] font-bold px-2 py-0.5 rounded">
-                  Risparmi 60€
-                </span>
-              </div>
-              <p className="text-sm text-[#DEC7CA] leading-relaxed">
-                Tecnologia diodo avanzata con manipolo raffreddato fino a -5°C per una seduta
-                totalmente indolore e progressivamente definitiva su tutte le zone del corpo.
-              </p>
-              
-              <div className="pt-2 flex flex-wrap gap-4">
-                <button
-                  onClick={() => onNavigate('laser')}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#D8B268] hover:bg-[#AA853D] text-[#191415] text-xs sm:text-sm font-semibold rounded-lg shadow-sm transition-all hover:scale-[1.02]"
-                >
-                  <span>Dettagli Tecnici & Promo Laser</span>
-                  <ArrowRight className="w-4 h-4 text-[#191415]" />
-                </button>
-                <button
-                  onClick={() => onNavigate('prenota', 'laser-total-body')}
-                  className="inline-flex items-center gap-2 px-5 py-3 border border-[#AA853D]/50 hover:bg-white/10 text-[#FAF7F7] text-xs sm:text-sm font-medium rounded-lg transition-colors"
-                >
-                  <span>Prenota Subito a €119,99</span>
-                </button>
-              </div>
+      {/* 2. PROMO ATTIVE (la sezione sparisce da sola quando non ce ne sono) */}
+      {activePromotions.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-widest text-[#AA853D]">Offerte a tempo</span>
+              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#261F21] mt-1">Promozioni in corso</h2>
             </div>
-
-            <div className="lg:col-span-6 flex justify-center">
-              <img
-                src="/assets/aistudio/WhatsApp_Image_2026-10-29_at_19.55.42_5d2a8a82.jpeg"
-                alt="Banner Promo Total Body Donna Laser EPILED Catania"
-                className="rounded-2xl max-h-[380px] object-cover shadow-lg border border-[#AA853D]/40"
-                referrerPolicy="no-referrer"
-              />
-            </div>
-
+            <button onClick={() => onNavigate('promo')} className="text-sm font-semibold text-[#AA853D] hover:underline flex items-center gap-1">
+              Vedi tutte <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
-        </div>
-      </section>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[...activePromotions]
+              .sort((a, b) => a.endsOn.localeCompare(b.endsOn))
+              .slice(0, 3)
+              .map((p) => (
+                <PromoCard key={p.id} promo={p} onNavigate={onNavigate} compact />
+              ))}
+          </div>
+        </section>
+      )}
 
       {/* 3. PERCORSI & SEZIONI DEL SALONE */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -343,13 +315,13 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               Mappa & Chi Siamo
             </button>
             <a
-              href="https://wa.me/393453938087"
+              href={whatsappUrl(undefined, contact.whatsapp)}
               target="_blank"
               rel="noreferrer"
               className="px-5 py-2.5 bg-[#25D366] text-white hover:bg-[#20ba59] text-xs font-semibold rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
             >
               <Phone className="w-3.5 h-3.5" />
-              <span>WhatsApp: 345 393 8087</span>
+              <span>WhatsApp: {formatPhone(contact.whatsapp)}</span>
             </a>
           </div>
         </div>

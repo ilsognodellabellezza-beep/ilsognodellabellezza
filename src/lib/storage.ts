@@ -4,7 +4,7 @@
  * sincrone get*() e si aggiornano ascoltando l'evento 'ilsogno_storage_change',
  * emesso dopo ogni caricamento/modifica.
  */
-import { Appointment, Client, FinancialSummary, Review } from '../types';
+import { Appointment, Client, Review } from '../types';
 import { INITIAL_REVIEWS } from '../data/mockData';
 import { supabase } from './supabase';
 import { toLocalDateStr } from './dates';
@@ -72,7 +72,6 @@ function mapAppointment(r: any): Appointment {
     notes: r.notes ?? undefined,
     reminderSent: r.reminder_sent,
     createdAt: r.created_at,
-    paymentMethod: r.payment_method,
   };
 }
 
@@ -85,7 +84,6 @@ function mapClient(r: any): Client {
     notes: r.notes ?? undefined,
     allergies: r.allergies ?? undefined,
     totalVisits: r.total_visits,
-    totalSpent: Number(r.total_spent),
     lastVisitDate: r.last_visit_date ?? undefined,
     preferredOperatorId: r.preferred_operator_id ?? undefined,
   };
@@ -133,7 +131,7 @@ function mapReview(r: any): PendingReview {
 // ---------------------------------------------------------------------------
 // Caricamento (gestionale: richiede utente autenticato)
 // ---------------------------------------------------------------------------
-export async function loadManagementData(options: { includeOwnerData: boolean }): Promise<void> {
+export async function loadManagementData(): Promise<void> {
   const [apps, clients] = await Promise.all([
     supabase.from('appointments').select('*').order('date', { ascending: false }).order('time', { ascending: true }),
     supabase.from('clients').select('*').order('full_name'),
@@ -143,7 +141,7 @@ export async function loadManagementData(options: { includeOwnerData: boolean })
   cache.appointments = (apps.data ?? []).map(mapAppointment);
   cache.clients = (clients.data ?? []).map(mapClient);
 
-  if (options.includeOwnerData) {
+  {
     const [logs, reviews] = await Promise.all([
       supabase.from('email_logs').select('*').order('sent_at', { ascending: false }).limit(200),
       supabase.from('reviews').select('*').order('created_at', { ascending: false }),
@@ -185,8 +183,8 @@ export function searchClients(query: string): Client[] {
 // ---------------------------------------------------------------------------
 export type NewAppointmentInput = Omit<
   Appointment,
-  'id' | 'code' | 'createdAt' | 'status' | 'reminderSent' | 'paymentMethod'
-> & Partial<Pick<Appointment, 'status' | 'reminderSent' | 'paymentMethod'>>;
+  'id' | 'code' | 'createdAt' | 'status' | 'reminderSent'
+> & Partial<Pick<Appointment, 'status' | 'reminderSent'>>;
 
 export class SlotTakenError extends Error {
   constructor() {
@@ -261,18 +259,10 @@ export async function getBookedSlotsRange(from: string, to: string): Promise<Rec
   return out;
 }
 
-export async function updateAppointmentStatus(
-  id: string,
-  status: Appointment['status'],
-  paymentMethod?: Appointment['paymentMethod']
-): Promise<void> {
-  const patch: Record<string, string> = { status };
-  if (paymentMethod) patch.payment_method = paymentMethod;
-  const { error } = await supabase.from('appointments').update(patch).eq('id', id);
+export async function updateAppointmentStatus(id: string, status: Appointment['status']): Promise<void> {
+  const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
   fail('aggiornamento appuntamento', error);
-  cache.appointments = cache.appointments.map((a) =>
-    a.id === id ? { ...a, status, ...(paymentMethod ? { paymentMethod } : {}) } : a
-  );
+  cache.appointments = cache.appointments.map((a) => (a.id === id ? { ...a, status } : a));
   emitChange();
 }
 
@@ -336,54 +326,6 @@ export async function triggerReminderEmails(): Promise<{ processed: number; sent
 }
 
 // ---------------------------------------------------------------------------
-// Contabilità
-// ---------------------------------------------------------------------------
-export function computeFinancialSummary(): FinancialSummary {
-  const appointments = cache.appointments;
-  const todayStr = toLocalDateStr();
-  const currentMonthStr = todayStr.substring(0, 7);
-  const currentYearStr = todayStr.substring(0, 4);
-
-  let todayRevenue = 0;
-  let monthRevenue = 0;
-  let yearRevenue = 0;
-  let completedCount = 0;
-  let validCount = 0;
-  let validTotal = 0;
-  const serviceStats: Record<string, { revenue: number; count: number }> = {};
-
-  appointments.forEach((app) => {
-    if (app.status === 'annullato') return;
-    const price = app.servicePrice || 0;
-    validCount++;
-    validTotal += price;
-
-    if (app.date === todayStr) todayRevenue += price;
-    if (app.date.startsWith(currentMonthStr)) monthRevenue += price;
-    if (app.date.startsWith(currentYearStr)) yearRevenue += price;
-    if (app.status === 'completato') completedCount++;
-
-    if (!serviceStats[app.serviceName]) serviceStats[app.serviceName] = { revenue: 0, count: 0 };
-    serviceStats[app.serviceName].revenue += price;
-    serviceStats[app.serviceName].count += 1;
-  });
-
-  const topServices = Object.entries(serviceStats)
-    .map(([name, stat]) => ({ name, revenue: stat.revenue, count: stat.count }))
-    .sort((a, b) => b.revenue - a.revenue)
-    .slice(0, 5);
-
-  return {
-    todayRevenue,
-    monthRevenue,
-    yearRevenue,
-    completedAppointmentsCount: completedCount,
-    averageTicket: validCount > 0 ? Math.round(validTotal / validCount) : 0,
-    topServices,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Area clienti
 // ---------------------------------------------------------------------------
 /** Prenotazioni della cliente collegata (le regole del database mostrano solo le sue). */
@@ -429,9 +371,9 @@ export async function listGalleryPhotos(): Promise<GalleryPhoto[]> {
 }
 
 /** Riduce la foto (max 1600px, JPEG) così il caricamento da telefono è leggero. */
-async function compressImage(file: File): Promise<Blob> {
+export async function compressImage(file: File, maxPx = 1600): Promise<Blob> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+  const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(bitmap.width * scale);
   canvas.height = Math.round(bitmap.height * scale);
@@ -458,4 +400,61 @@ export async function deleteGalleryPhoto(photo: GalleryPhoto): Promise<void> {
   const del = await supabase.from('gallery_photos').delete().eq('id', photo.id);
   fail('eliminazione foto', del.error);
   await supabase.storage.from(GALLERY_BUCKET).remove([photo.path]);
+}
+
+// ---------------------------------------------------------------------------
+// Archivio incassi (esportazione prima della rimozione della contabilità)
+// ---------------------------------------------------------------------------
+function downloadCsv(filename: string, headers: string[], rows: (string | number | null | undefined)[][]) {
+  const q = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // Separatore ";" e BOM: Excel italiano apre il file correttamente
+  const csv = '\uFEFF' + [headers, ...rows].map((r) => r.map(q).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Scarica due file CSV con i dati contabili esistenti: incassi e pagamenti per appuntamento
+ * e totale speso per cliente. Legge direttamente dal database, anche le colonne che l'app non usa più.
+ */
+export async function exportAccountingArchive(): Promise<{ appointments: number; clients: number }> {
+  const [apps, clients] = await Promise.all([
+    supabase.from('appointments').select('*').order('date', { ascending: true }),
+    supabase.from('clients').select('*').order('full_name'),
+  ]);
+  fail('lettura appuntamenti', apps.error);
+  fail('lettura clienti', clients.error);
+  const today = toLocalDateStr();
+  const money = (v: unknown) => (v === null || v === undefined || v === '' ? '' : Number(v).toFixed(2).replace('.', ','));
+
+  downloadCsv(
+    `incassi_e_pagamenti_${today}.csv`,
+    ['Codice', 'Data', 'Ora', 'Cliente', 'Telefono', 'Trattamento', 'Operatrice', 'Importo (€)', 'Stato', 'Metodo di pagamento'],
+    (apps.data ?? []).map((a: any) => [
+      a.code,
+      a.date,
+      hhmm(a.time),
+      a.client_name,
+      a.client_phone,
+      a.service_name,
+      a.operator_name,
+      money(a.service_price),
+      a.status,
+      a.payment_method ?? 'non_saldato',
+    ])
+  );
+  // piccolo ritardo: alcuni browser bloccano due download nello stesso istante
+  await new Promise((r) => setTimeout(r, 400));
+  downloadCsv(
+    `totale_speso_per_cliente_${today}.csv`,
+    ['Cliente', 'Telefono', 'Email', 'Visite', 'Ultima visita', 'Totale speso (€)'],
+    (clients.data ?? []).map((c: any) => [c.full_name, c.phone, c.email, c.total_visits, c.last_visit_date, money(c.total_spent)])
+  );
+  return { appointments: (apps.data ?? []).length, clients: (clients.data ?? []).length };
 }

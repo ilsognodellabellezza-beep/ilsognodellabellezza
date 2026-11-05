@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar, User, Menu, X, Home, Sparkles } from 'lucide-react';
 import { PageId } from '../types/navigation';
 import { useAuth } from '../lib/auth';
+import { useSalon } from '../lib/salon';
 
 interface NavbarProps {
   currentPage: PageId;
@@ -11,6 +12,8 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { customer } = useAuth();
+  const { activePromotions } = useSalon();
+  const hasPromo = activePromotions.length > 0;
   const accountLabel = customer ? (customer.fullName.split(' ')[0] || 'Il mio account') : 'Accedi';
 
   const handleNavClick = (page: PageId) => {
@@ -63,17 +66,19 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
             Trattamenti
           </button>
 
-          <button
-            onClick={() => handleNavClick('laser')}
-            className={`transition-colors whitespace-nowrap hover:text-[#AA853D] flex items-center gap-1.5 ${
-              currentPage === 'laser' ? 'text-[#AA853D] font-bold border-b-2 border-[#AA853D] pb-1' : ''
-            }`}
-          >
-            <span>Laser 818NM</span>
-            <span className="text-[10px] uppercase font-semibold text-[#AA853D] bg-[#F7EFEF] px-1.5 py-0.5 rounded-sm">
-              Promo
-            </span>
-          </button>
+          {hasPromo && (
+            <button
+              onClick={() => handleNavClick('promo')}
+              className={`transition-colors whitespace-nowrap hover:text-[#AA853D] flex items-center gap-1.5 ${
+                currentPage === 'promo' ? 'text-[#AA853D] font-bold border-b-2 border-[#AA853D] pb-1' : ''
+              }`}
+            >
+              <span>Promo</span>
+              <span className="text-[10px] uppercase font-semibold text-[#AA853D] bg-[#F7EFEF] px-1.5 py-0.5 rounded-sm">
+                {activePromotions.length}
+              </span>
+            </button>
+          )}
 
           <button
             onClick={() => handleNavClick('recensioni')}
@@ -152,13 +157,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate }) => {
               {([
                 ['home', 'Home'],
                 ['trattamenti', 'Trattamenti & Listino'],
-                ['laser', 'Laser EPILED 818NM · Promo €119,99'],
+                ['promo', 'Promozioni in corso'],
                 ['prenota', 'Prenotazioni Online'],
                 ['recensioni', 'Recensioni Clienti'],
                 ['galleria', 'Galleria Foto'],
                 ['chi-siamo', 'Chi Siamo & Contatti'],
                 ['account', customer ? `Il mio account (${accountLabel})` : 'Accedi o registrati'],
-              ] as [PageId, string][]).map(([page, label]) => (
+              ] as [PageId, string][]).filter(([page]) => page !== 'promo' || hasPromo).map(([page, label]) => (
                 <button
                   key={page}
                   onClick={() => handleNavClick(page)}

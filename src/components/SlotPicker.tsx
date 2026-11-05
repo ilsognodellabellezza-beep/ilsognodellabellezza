@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle } from 'lucide-react';
 import { getBookedSlots, BookedSlot } from '../lib/storage';
 import { timeToMinutes } from '../lib/dates';
 import { useSiteConfig, slotsForDay } from '../lib/siteSettings';
+import { useSalon, isBlockedSlot } from '../lib/salon';
 
 interface SlotPickerProps {
   date: string;
@@ -29,6 +30,7 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
   refreshKey = 0,
 }) => {
   const { settings } = useSiteConfig();
+  useSalon(); // chiusure e blocchi aggiornati
   const baseSlots = date ? slotsForDay(settings, date, durationMinutes) : [];
   const [booked, setBooked] = useState<BookedSlot[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,7 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
   const isFree = (t: string) => {
     const start = timeToMinutes(t);
     const end = start + durationMinutes;
+    if (isBlockedSlot(date, t, durationMinutes, operatorId)) return false;
     return !booked.some((b) => {
       if (b.operatorId !== operatorId) return false;
       const bs = timeToMinutes(b.startTime);
@@ -82,7 +85,7 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
           }`}
         >
           {status === 'libero' ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
-          {status === 'libero' ? `Disponibile alle ${time}` : `Occupato alle ${time}: l'operatrice ha già un appuntamento`}
+          {status === 'libero' ? `Disponibile alle ${time}` : `Non disponibile alle ${time}: appuntamento già presente o orario bloccato`}
         </p>
       )}
       {failed && <p className="text-[11px] text-red-700">Impossibile verificare la disponibilità.</p>}
@@ -92,7 +95,7 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
           {loading ? 'Verifica disponibilità…' : 'Fasce del giorno (tocca per scegliere):'}
         </p>
         <div className="grid grid-cols-5 gap-1.5">
-          {baseSlots.length === 0 && date && <p className="col-span-5 text-[11px] text-[#8F7D82]">Salone chiuso in questo giorno (puoi comunque inserire un orario a mano).</p>}
+          {baseSlots.length === 0 && date && <p className="col-span-5 text-[11px] text-[#8F7D82]">Salone chiuso o giorno bloccato (puoi comunque inserire un orario a mano).</p>}
           {baseSlots.map((t) => {
             const free = !loading && !failed && isFree(t);
             const busy = !loading && !failed && !free;

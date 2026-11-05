@@ -2,6 +2,7 @@ import React from 'react';
 import { MapPin, Phone, Clock, ShieldCheck, User, Calendar } from 'lucide-react';
 import { PageId } from '../types/navigation';
 import { useSiteConfig, formatOpeningSummary } from '../lib/siteSettings';
+import { useSalon, whatsappUrl, formatPhone } from '../lib/salon';
 
 interface FooterProps {
   onNavigate: (page: PageId) => void;
@@ -9,6 +10,7 @@ interface FooterProps {
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
   const { settings } = useSiteConfig();
+  const { contact, activePromotions } = useSalon();
   const handleNav = (page: PageId) => {
     onNavigate(page);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -65,11 +67,13 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                   Menu Trattamenti & Listino
                 </button>
               </li>
+              {activePromotions.length > 0 && (
               <li>
-                <button onClick={() => handleNav('laser')} className="hover:text-[#D8B268] transition-colors">
-                  Laser EPILED 818NM (Promo €119,99)
+                <button onClick={() => handleNav('promo')} className="hover:text-[#D8B268] transition-colors">
+                  Promozioni in corso
                 </button>
               </li>
+            )}
               <li>
                 <button onClick={() => handleNav('prenota')} className="hover:text-[#D8B268] transition-colors">
                   Prenota Online
@@ -105,8 +109,8 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               </p>
               <p className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-[#AA853D] shrink-0" />
-                <a href="tel:3453938087" className="hover:text-[#D8B268]">
-                  Tel / WhatsApp: 345 393 8087
+                <a href={`tel:+${contact.whatsapp}`} className="hover:text-[#D8B268]">
+                  Tel / WhatsApp: {formatPhone(contact.whatsapp)}
                 </a>
               </p>
               <p className="flex items-start gap-2">
@@ -116,20 +120,20 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             </div>
 
             <div className="pt-2 flex flex-wrap gap-2">
-              <button
-                onClick={() => handleNav('gestionale-dipendenti')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#261F21] hover:bg-[#3B3033] border border-[#AA853D]/40 rounded-lg text-xs text-[#DEC7CA] transition-colors"
+              <a
+                href={whatsappUrl(undefined, contact.whatsapp)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#25D366] hover:bg-[#1EBE5A] rounded-lg text-xs text-white font-bold transition-colors"
               >
-                <User className="w-3.5 h-3.5 text-[#8F7D82]" />
-                <span>Area Staff</span>
-              </button>
-
+                <span>Scrivici su WhatsApp</span>
+              </a>
               <button
-                onClick={() => handleNav('gestionale-titolare')}
+                onClick={() => handleNav('gestionale')}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#261F21] hover:bg-[#3B3033] border border-[#AA853D]/40 rounded-lg text-xs text-[#D8B268] font-bold transition-colors"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-[#AA853D]" />
-                <span>Area Titolare</span>
+                <span>Gestionale</span>
               </button>
             </div>
           </div>

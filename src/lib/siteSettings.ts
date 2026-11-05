@@ -11,6 +11,7 @@ import { Service, Operator, TreatmentCategory } from '../types';
 import { SERVICES, OPERATORS } from '../data/mockData';
 import { supabase } from './supabase';
 import { timeToMinutes } from './dates';
+import { dayStatus } from './salon';
 
 export interface DayHours {
   open: boolean;
@@ -124,13 +125,19 @@ export function applyOverride(base: Service, o?: ServiceOverride): Service {
   };
 }
 
-export const CATEGORY_LABELS: Partial<Record<TreatmentCategory, string>> = {
-  laser: 'Epilazione Laser',
-  massaggi: 'Massaggi Donna',
-  viso: 'Viso Avanzato',
+export const CATEGORY_LABELS: Record<TreatmentCategory, string> = {
+  viso: 'Trattamenti viso',
+  corpo: 'Trattamento corpo (solo donna)',
+  mani: 'Trattamento mani',
+  pedicure: 'Trattamento pedicure',
+  makeup: 'Make up',
   sguardo: 'Ciglia & Sopracciglia',
-  'mani-piedi': 'Mani & Piedi',
+  laser: 'Epilazione Laser',
 };
+
+/** Ordine del menu trattamenti (sito e prenotazione) */
+export const CATEGORY_ORDER: TreatmentCategory[] = ['viso', 'corpo', 'mani', 'pedicure', 'makeup', 'sguardo', 'laser'];
+export const CATEGORY_LIST = CATEGORY_ORDER.map((id) => ({ id, label: CATEGORY_LABELS[id] }));
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 function mapCustomService(r: any): Service {
@@ -361,8 +368,9 @@ export const minutesToTime = (m: number) =>
 /** Giorno della settimana (0 = domenica) di una data YYYY-MM-DD, senza slittamenti di fuso. */
 export const weekdayOf = (dateStr: string) => new Date(`${dateStr}T12:00:00`).getDay();
 
+/** Il salone è aperto in questo giorno? Considera giorni della settimana, chiusure, festivi e aperture straordinarie. */
 export function isOpenOn(settings: BookingSettings, dateStr: string): boolean {
-  return settings.hours[weekdayOf(dateStr)]?.open ?? false;
+  return dayStatus(settings, dateStr).open;
 }
 
 /**
@@ -371,7 +379,7 @@ export function isOpenOn(settings: BookingSettings, dateStr: string): boolean {
  * Es. chiusura 18:30: un servizio da 30 min può iniziare alle 18:00, uno da 60 min alle 17:30.
  */
 export function slotsForDay(settings: BookingSettings, dateStr: string, durationMinutes: number): string[] {
-  const h = settings.hours[weekdayOf(dateStr)];
+  const h = dayStatus(settings, dateStr).hours;
   if (!h || !h.open) return [];
   const from = timeToMinutes(h.from);
   const to = timeToMinutes(h.to);
