@@ -41,11 +41,11 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
   const [timed, setTimed] = useState(false);
   const [fromTime, setFromTime] = useState('09:00');
   const [toTime, setToTime] = useState('18:30');
-  const [scope, setScope] = useState('all');
+  const [scope, setScope] = useState<string[]>([]); // vuoto = tutto il centro
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [justCreated, setJustCreated] = useState<AppointmentBlock | null>(null);
+  const [justCreated, setJustCreated] = useState<AppointmentBlock[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,17 +65,19 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
     if (timed && toTime <= fromTime) return setError('L’ora di fine deve essere dopo quella di inizio.');
     setBusy(true);
     setError(null);
-    const draft: Omit<AppointmentBlock, 'id'> = {
+    const targets: (string | null)[] = scope.length === 0 ? [null] : scope;
+    const drafts: Omit<AppointmentBlock, 'id'>[] = targets.map((operatorId) => ({
       startDate: from,
       endDate: to,
       fromTime: timed ? fromTime : null,
       toTime: timed ? toTime : null,
-      operatorId: scope === 'all' ? null : scope,
+      operatorId,
       note,
-    };
+    }));
     try {
-      await addBlock(draft);
-      setJustCreated({ id: 'new', ...draft });
+      for (const d of drafts) await addBlock(d);
+      setJustCreated(drafts.map((d, i) => ({ id: 'new' + i, ...d })));
+      setScope([]);
       setFormOpen(false);
       setNote('');
     } catch (e) {
@@ -89,7 +91,7 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
     if (!confirm('Annullare questo blocco? Gli orari tornano subito prenotabili dalle clienti.')) return;
     try {
       await deleteBlock(b.id);
-      setJustCreated(null);
+      setJustCreated([]);
     } catch (e) {
       alert(errText(e));
     }
@@ -194,17 +196,33 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
                 <input type="time" value={toTime} onChange={(e) => setToTime(e.target.value)} className={inputCls} />
               </div>
             )}
-            <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+            <div className="space-y-1.5 text-[11px] font-medium text-[#55474A]">
               <span>Chi si blocca</span>
-              <select value={scope} onChange={(e) => setScope(e.target.value)} className={`${inputCls} w-full`}>
-                <option value="all">Tutto il centro</option>
-                {allOperators.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    Solo {o.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setScope([])}
+                  className={`px-3 py-1.5 rounded-full border text-xs font-semibold ${scope.length === 0 ? 'bg-[#8A3B49] text-white border-[#8A3B49]' : 'bg-white border-[#DEC7CA] text-[#261F21]'}`}
+                >
+                  Tutto il centro
+                </button>
+                {allOperators.map((o) => {
+                  const on = scope.includes(o.id);
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setScope(on ? scope.filter((x) => x !== o.id) : [...scope, o.id])}
+                      className={`px-3 py-1.5 rounded-full border text-xs font-semibold ${on ? 'bg-[#8A3B49] text-white border-[#8A3B49]' : 'bg-white border-[#DEC7CA] text-[#261F21]'}`}
+                    >
+                      {o.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-[#8F7D82]">Puoi scegliere una o più dipendenti: gli altri restano prenotabili.</p>
+            </div>
             <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
               <span>Motivo (resta riservato)</span>
               <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={160} placeholder="Es. malattia" className={`${inputCls} w-full`} />
@@ -227,19 +245,21 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
       )}
 
       {/* Subito dopo il blocco: chi è già prenotata */}
-      {justCreated && (
+      {justCreated.length > 0 && (
         <div className="p-4 rounded-2xl border border-amber-300 bg-amber-50 space-y-3">
           <div className="flex items-start justify-between gap-3">
             <p className="text-xs font-bold text-[#261F21]">
-              Blocco attivo: {operatorName(justCreated.operatorId)} · {fmt(justCreated.startDate)}
-              {justCreated.endDate !== justCreated.startDate && ` → ${fmt(justCreated.endDate)}`}
-              {justCreated.fromTime && ` · ${justCreated.fromTime}–${justCreated.toTime}`}. Le clienti non vedono più orari disponibili.
+              Blocco attivo: {justCreated.map((b) => operatorName(b.operatorId)).join(', ')} · {fmt(justCreated[0].startDate)}
+              {justCreated[0].endDate !== justCreated[0].startDate && ` → ${fmt(justCreated[0].endDate)}`}
+              {justCreated[0].fromTime && ` · ${justCreated[0].fromTime}–${justCreated[0].toTime}`}. Le clienti non vedono più orari disponibili.
             </p>
-            <button type="button" aria-label="Chiudi" onClick={() => setJustCreated(null)} className="text-[#8F7D82] shrink-0">
+            <button type="button" aria-label="Chiudi" onClick={() => setJustCreated([])} className="text-[#8F7D82] shrink-0">
               <X className="w-5 h-5" />
             </button>
           </div>
-          <AffectedList block={justCreated} />
+          {justCreated.map((b) => (
+            <AffectedList key={b.id} block={b} />
+          ))}
         </div>
       )}
 

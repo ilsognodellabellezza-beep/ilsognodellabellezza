@@ -1,16 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { Camera, FileSpreadsheet, Image as ImageIcon, Trash2, Users } from 'lucide-react';
+import { Camera, Image as ImageIcon, Trash2, Users } from 'lucide-react';
 import { useSiteConfig } from '../lib/siteSettings';
 import {
   operatorPhotoUrl,
   removeOperatorPhoto,
-  removeServicePhoto,
-  servicePhotoUrl,
   setOperatorPhoto,
-  setServicePhoto,
   useSalon,
 } from '../lib/salon';
-import { exportAccountingArchive } from '../lib/storage';
 
 const cardCls = 'bg-white border border-[#EEDFE1] rounded-3xl p-5 sm:p-6 space-y-4';
 const SQL_HINT = 'Esegui lo script supabase/08-novita-sito-gestionale.sql nel database (SQL Editor di Supabase).';
@@ -116,70 +112,3 @@ export const TeamPhotosPanel: React.FC = () => {
   );
 };
 
-/** Foto di ogni trattamento (griglia del sito e prenotazione). */
-export const ServicePhotosPanel: React.FC = () => {
-  const { allServices } = useSiteConfig();
-  useSalon();
-  return (
-    <section className={cardCls}>
-      <div className="flex items-center gap-2">
-        <ImageIcon className="w-5 h-5 text-[#AA853D]" />
-        <h3 className="font-serif text-lg font-bold text-[#261F21]">Foto dei trattamenti</h3>
-      </div>
-      <p className="text-[11px] text-[#8F7D82]">
-        Ogni trattamento ha la sua foto nella griglia del sito e nella scheda. Le foto vengono ridimensionate in automatico per caricarsi in fretta anche da telefono.
-      </p>
-      <div className="grid sm:grid-cols-2 gap-2.5">
-        {allServices.map((s) => (
-          <PhotoRow
-            key={s.id}
-            label={s.name}
-            sub={s.categoryLabel}
-            url={servicePhotoUrl(s.id)}
-            onUpload={(f) => setServicePhoto(s.id, f)}
-            onRemove={() => removeServicePhoto(s.id)}
-          />
-        ))}
-      </div>
-    </section>
-  );
-};
-
-/** Esportazione dei dati contabili esistenti, da fare prima della rimozione definitiva. */
-export const AccountingExportPanel: React.FC = () => {
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const run = async () => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const r = await exportAccountingArchive();
-      setMsg({ ok: true, text: `Scaricati due file: ${r.appointments} appuntamenti con importi e pagamenti, ${r.clients} clienti con totale speso. Conservali: la contabilità non è più nel gestionale.` });
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <section className={cardCls}>
-      <div className="flex items-center gap-2">
-        <FileSpreadsheet className="w-5 h-5 text-[#AA853D]" />
-        <h3 className="font-serif text-lg font-bold text-[#261F21]">Esporta archivio incassi</h3>
-      </div>
-      <p className="text-[11px] text-[#8F7D82]">
-        Incassi, spese e report economici non fanno più parte del gestionale. Prima di eliminarli dal database scarica una copia dei dati contabili esistenti (file CSV, apribili con Excel): incassi e metodi di pagamento per ogni appuntamento e totale speso per cliente.
-      </p>
-      <button type="button" onClick={run} disabled={busy} className="px-5 py-2.5 bg-[#261F21] text-[#D8B268] text-xs font-bold rounded-xl flex items-center gap-2 disabled:opacity-40">
-        <FileSpreadsheet className="w-4 h-4" /> {busy ? 'Preparazione…' : 'Scarica i dati contabili (CSV)'}
-      </button>
-      {msg && (
-        <p role="status" className={`text-xs font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
-          {msg.text}
-        </p>
-      )}
-    </section>
-  );
-};

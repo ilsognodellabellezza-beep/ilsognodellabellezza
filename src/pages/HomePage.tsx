@@ -90,7 +90,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                   onClick={() => onNavigate('trattamenti')}
                   className="p-3.5 rounded-xl bg-white/80 border border-[#EEDFE1] shadow-2xs hover:border-[#AA853D] cursor-pointer transition-colors"
                 >
-                  <span className="block text-xs font-bold text-[#AA853D]">Massaggi Benessere</span>
+                  <span className="block text-xs font-bold text-[#AA853D]">Trattamento corpo</span>
                   <span className="text-xs text-[#55474A]">Riservati solo alle donne</span>
                 </div>
               </div>
@@ -151,23 +151,30 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
 
       {/* 2. PROMO ATTIVE (la sezione sparisce da sola quando non ce ne sono) */}
       {activePromotions.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-widest text-[#AA853D]">Offerte a tempo</span>
-              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#261F21] mt-1">Promozioni in corso</h2>
+        <section id="promo" className="relative overflow-hidden bg-gradient-to-br from-[#8A3B49] via-[#5C242E] to-[#261F21] py-12 sm:py-16">
+          <div className="pointer-events-none absolute -top-24 -right-24 w-80 h-80 rounded-full bg-[#D8B268]/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -left-24 w-80 h-80 rounded-full bg-[#D8B268]/10 blur-3xl" />
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+              <div>
+                <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-widest text-[#191415] bg-[#D8B268] px-3 py-1 rounded-full animate-pulse">
+                  🔥 Offerte a tempo limitato
+                </span>
+                <h2 className="font-serif text-3xl sm:text-4xl font-bold text-white mt-3">Promozioni in corso</h2>
+                <p className="text-sm text-[#EBDDDF] mt-1">Approfitta subito: quando scadono, spariscono.</p>
+              </div>
+              <button onClick={() => onNavigate('promo')} className="text-sm font-bold text-[#D8B268] hover:underline flex items-center gap-1">
+                Vedi tutte <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
-            <button onClick={() => onNavigate('promo')} className="text-sm font-semibold text-[#AA853D] hover:underline flex items-center gap-1">
-              Vedi tutte <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {[...activePromotions]
-              .sort((a, b) => a.endsOn.localeCompare(b.endsOn))
-              .slice(0, 3)
-              .map((p) => (
-                <PromoCard key={p.id} promo={p} onNavigate={onNavigate} compact />
-              ))}
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {[...activePromotions]
+                .sort((a, b) => a.endsOn.localeCompare(b.endsOn))
+                .slice(0, 3)
+                .map((p) => (
+                  <PromoCard key={p.id} promo={p} onNavigate={onNavigate} compact />
+                ))}
+            </div>
           </div>
         </section>
       )}
@@ -225,7 +232,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               Riservato Solo Donna
             </span>
             <h3 className="font-serif text-xl font-bold text-[#261F21] group-hover:text-[#AA853D] transition-colors">
-              Massaggi Corpo & Drenanti
+              Trattamento corpo
             </h3>
             <p className="text-xs text-[#55474A] leading-relaxed">
               Rituali linfodrenanti metodo Rigenera, decontratturanti con oli caldi e modellanti anticellulite.

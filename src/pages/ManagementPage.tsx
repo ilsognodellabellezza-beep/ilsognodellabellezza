@@ -38,6 +38,7 @@ import {
 import { useAuth } from '../lib/auth';
 import { GalleryManager } from '../components/GalleryManager';
 import { SlotPicker } from '../components/SlotPicker';
+import { SearchPicker } from '../components/SearchPicker';
 import { toLocalDateStr, addDays } from '../lib/dates';
 import { SiteSettingsPanel } from '../components/SiteSettingsPanel';
 import { AgendaTab } from '../components/AgendaBoard';
@@ -624,6 +625,23 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
               </div>
 
               <form onSubmit={handleQuickAdd} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-[#261F21]">Cerca cliente già registrata</label>
+                  <SearchPicker
+                    items={clients.map((c) => ({ id: c.id, label: c.fullName, hint: `${c.phone} · ${c.email}` }))}
+                    value=""
+                    onChange={(id) => {
+                      const c = clients.find((x) => x.id === id);
+                      if (!c) return;
+                      setNewClientName(c.fullName);
+                      setNewClientPhone(c.phone);
+                      setNewClientEmail(c.email);
+                      if (c.preferredOperatorId && OPERATORS.some((o) => o.id === c.preferredOperatorId)) setNewOperatorId(c.preferredOperatorId);
+                    }}
+                    placeholder="Cerca per nome, telefono o email…"
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-[#261F21]">Nome Cliente *</label>
@@ -663,17 +681,12 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-[#261F21]">Trattamento</label>
-                    <select
+                    <SearchPicker
+                      items={SERVICES.map((s) => ({ id: s.id, label: s.name, hint: `${s.categoryLabel} · €${s.promoPrice || s.price}` }))}
                       value={newServiceId}
-                      onChange={(e) => setNewServiceId(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D]"
-                    >
-                      {SERVICES.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} (€{s.promoPrice || s.price})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setNewServiceId}
+                      placeholder="Cerca trattamento…"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-[#261F21]">Operatrice</label>

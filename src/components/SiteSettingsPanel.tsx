@@ -18,7 +18,7 @@ import {
   CATEGORY_LIST,
 } from '../lib/siteSettings';
 import { ContactPanel, QrPanel } from './ContactQrPanel';
-import { TeamPhotosPanel, ServicePhotosPanel, AccountingExportPanel } from './PhotosPanel';
+import { TeamPhotosPanel } from './PhotosPanel';
 import { SERVICES } from '../data/mockData';
 import { timeToMinutes } from '../lib/dates';
 
@@ -56,9 +56,7 @@ export const SiteSettingsPanel: React.FC = () => {
       <OperatorsEditor />
       <TeamPhotosPanel />
       <CustomServicesEditor />
-      <ServicePhotosPanel />
       <ServicesEditor overrides={overrides} />
-      <AccountingExportPanel />
     </div>
   );
 };

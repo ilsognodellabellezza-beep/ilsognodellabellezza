@@ -3,7 +3,6 @@ import { Clock, Check, ShieldAlert, ArrowRight, Search, X } from 'lucide-react';
 import { TreatmentCategory, Service } from '../types';
 import { useSiteConfig, CATEGORY_LIST } from '../lib/siteSettings';
 import { useSalon } from '../lib/salon';
-import { ServicePhoto } from '../components/ServicePhoto';
 import { PageId } from '../types/navigation';
 
 interface TreatmentsPageProps {
@@ -115,26 +114,23 @@ export const TreatmentsPage: React.FC<TreatmentsPageProps> = ({ onNavigate }) =>
           </div>
         )}
 
-        {/* Griglia con foto */}
+        {/* Griglia */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5">
           {filtered.map((service) => (
             <button
               key={service.id}
               type="button"
               onClick={() => setOpenId(service.id)}
-              className="group text-left bg-white rounded-2xl border border-[#EEDFE1] overflow-hidden hover:shadow-lg transition-shadow flex flex-col"
+              className="group text-left bg-white rounded-2xl border border-[#EEDFE1] overflow-hidden hover:shadow-lg hover:border-[#AA853D] transition-all flex flex-col"
             >
-              <div className="relative aspect-[4/5] overflow-hidden bg-[#F7EFEF]">
-                <ServicePhoto serviceId={service.id} name={service.name} className="w-full h-full transition-transform duration-500 group-hover:scale-105" />
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent p-3 pt-10">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#D8B268]">{service.categoryLabel}</span>
-                  <h3 className="font-serif text-sm sm:text-base font-bold text-white leading-snug line-clamp-2">{service.name}</h3>
+              <div className="p-4 flex-1 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[#AA853D]">{service.categoryLabel}</span>
+                  {service.onlyWomen && <span className="text-[10px] font-bold text-[#8A3B49] bg-[#FAF0F2] px-2 py-0.5 rounded">Solo donna</span>}
                 </div>
-                {service.onlyWomen && (
-                  <span className="absolute top-2 left-2 text-[10px] font-bold text-[#8A3B49] bg-white/95 px-2 py-0.5 rounded">Solo donna</span>
-                )}
+                <h3 className="font-serif text-sm sm:text-base font-bold text-[#261F21] leading-snug">{service.name}</h3>
               </div>
-              <div className="px-3 py-2.5 flex items-center justify-between gap-2">
+              <div className="px-4 py-2.5 border-t border-[#F7EFEF] flex items-center justify-between gap-2">
                 <PriceTag service={service} />
                 <span className="text-[11px] text-[#8F7D82] flex items-center gap-1 shrink-0">
                   <Clock className="w-3 h-3" />
@@ -163,13 +159,12 @@ export const TreatmentsPage: React.FC<TreatmentsPageProps> = ({ onNavigate }) =>
             onClick={(e) => e.stopPropagation()}
             className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[94dvh] overflow-y-auto"
           >
-            <div className="relative">
-              <ServicePhoto serviceId={opened.id} name={opened.name} lazy={false} className="w-full aspect-[4/3]" />
+            <div className="flex justify-end p-3 pb-0">
               <button
                 type="button"
                 aria-label="Chiudi"
                 onClick={() => setOpenId(null)}
-                className="absolute top-3 right-3 w-10 h-10 rounded-full bg-white/95 text-[#261F21] flex items-center justify-center shadow"
+                className="w-10 h-10 rounded-full bg-[#F7EFEF] text-[#261F21] flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Service, Operator, TreatmentCategory } from '../types';
 import { useSalon, loadSalonData, isBlockedSlot, isLaserService, laserAllowsSlot, laserOpenOn, dayStatus, whatsappUrl, formatPhone } from '../lib/salon';
-import { ServicePhoto, OperatorAvatar } from '../components/ServicePhoto';
+import { OperatorAvatar } from '../components/ServicePhoto';
 import { saveAppointment, getBookedSlotsRange, BookedSlot, SlotTakenError } from '../lib/storage';
 import { toLocalDateStr, timeToMinutes, addDays } from '../lib/dates';
 import { useSiteConfig, loadSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary, operatorsForService, CATEGORY_LIST } from '../lib/siteSettings';
@@ -469,7 +469,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                         }`}
                       >
                         <div className="flex items-start justify-between gap-3 sm:gap-4">
-                          <ServicePhoto serviceId={service.id} name={service.name} className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl shrink-0" />
                           <div className="space-y-1 flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-[11px] font-semibold text-[#AA853D] uppercase tracking-wide">
@@ -676,11 +675,6 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                   {slotsError && (
                     <p role="alert" className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
                       {slotsError}
-                    </p>
-                  )}
-                  {isLaserSelected && (
-                    <p className="text-[11px] text-[#5C242E] bg-[#FAF0F2] border border-[#DEC7CA] rounded-xl p-2.5">
-                      Il laser è disponibile solo in alcuni giorni: i giorni non selezionabili non hanno il laser in sede.
                     </p>
                   )}
                   <MonthCalendar
