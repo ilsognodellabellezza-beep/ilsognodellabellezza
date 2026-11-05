@@ -64,12 +64,11 @@ export const ContactPanel: React.FC = () => {
 // ---------------------------------------------------------------------------
 // QR code
 // ---------------------------------------------------------------------------
-type Target = 'sito' | 'prenota' | 'promo' | 'app';
+type Target = 'prenota' | 'promo' | 'app';
 
 const TARGETS: { id: Target; label: string; hash: string; caption: string }[] = [
-  { id: 'sito', label: 'Sito', hash: '', caption: 'Scopri i nostri trattamenti' },
-  { id: 'prenota', label: 'Pagina di prenotazione', hash: '#prenota', caption: 'Prenota il tuo appuntamento' },
-  { id: 'promo', label: 'Pagina promo', hash: '#promo', caption: 'Scopri le nostre promozioni' },
+  { id: 'prenota', label: 'Prenotazione', hash: '#prenota', caption: 'Prenota il tuo appuntamento' },
+  { id: 'promo', label: 'Promo', hash: '#promo', caption: 'Scopri le nostre promozioni' },
   { id: 'app', label: 'Come installare l’app', hash: '#installa-app', caption: 'Aggiungi il nostro sito al telefono' },
 ];
 
@@ -163,19 +162,17 @@ const download = (blob: Blob, filename: string) => {
 /** Indirizzo pubblico del sito: i QR puntano sempre qui, anche se il gestionale è aperto da un altro link. */
 const PUBLIC_SITE_URL = 'https://ilsognodellabellezza.vercel.app';
 
-export const QrPanel: React.FC = () => {
-  const [target, setTarget] = useState<Target>('prenota');
-  const [base, setBase] = useState(PUBLIC_SITE_URL);
+const QR_OPTS = { margin: 2, errorCorrectionLevel: 'M' as const, color: { dark: '#261F21', light: '#ffffff' } };
+
+const QrCard: React.FC<{ t: (typeof TARGETS)[number]; url: string }> = ({ t, url }) => {
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState<'png' | 'pdf' | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const t = TARGETS.find((x) => x.id === target)!;
-  const url = `${base.replace(/\/+$/, '')}/${t.hash}`;
+  const fileBase = `qr-${t.id}-il-sogno-della-bellezza`;
 
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(url, { width: 360, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#261F21', light: '#ffffff' } })
+    QRCode.toDataURL(url, { ...QR_OPTS, width: 360 })
       .then((d) => active && setPreview(d))
       .catch(() => active && setPreview(''));
     return () => {
@@ -183,20 +180,12 @@ export const QrPanel: React.FC = () => {
     };
   }, [url]);
 
-  const fileBase = `qr-${t.id}-il-sogno-della-bellezza`;
-
-  const getPng = async () => {
-    // PNG ad alta risoluzione, adatto alla stampa
-    const dataUrl = await QRCode.toDataURL(url, { width: 1600, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#261F21', light: '#ffffff' } });
-    const res = await fetch(dataUrl);
-    return res.blob();
-  };
-
   const onPng = async () => {
     setBusy('png');
     setError(null);
     try {
-      download(await getPng(), `${fileBase}.png`);
+      const dataUrl = await QRCode.toDataURL(url, { ...QR_OPTS, width: 1600, margin: 3 });
+      download(await (await fetch(dataUrl)).blob(), `${fileBase}.png`);
     } catch {
       setError('Impossibile creare il file. Riprova.');
     } finally {
@@ -210,8 +199,7 @@ export const QrPanel: React.FC = () => {
     try {
       const canvas = await renderSheet(url, t.caption);
       const jpeg = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('jpeg'))), 'image/jpeg', 0.95));
-      const bytes = new Uint8Array(await jpeg.arrayBuffer());
-      download(jpegToPdf(bytes, canvas.width, canvas.height), `${fileBase}.pdf`);
+      download(jpegToPdf(new Uint8Array(await jpeg.arrayBuffer()), canvas.width, canvas.height), `${fileBase}.pdf`);
     } catch {
       setError('Impossibile creare il PDF. Riprova o usa il PNG.');
     } finally {
@@ -220,57 +208,46 @@ export const QrPanel: React.FC = () => {
   };
 
   return (
+    <div className="border border-[#EEDFE1] rounded-2xl p-4 space-y-3 flex flex-col items-center text-center">
+      <h4 className="text-sm font-bold text-[#261F21]">{t.label}</h4>
+      <div className="p-2 border border-[#EEDFE1] rounded-xl bg-white">
+        {preview ? <img src={preview} alt={`QR code: ${url}`} className="w-40 h-40" /> : <div className="w-40 h-40 bg-[#F7EFEF] rounded-lg" />}
+      </div>
+      <a href={url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#AA853D] underline break-all">
+        {url}
+      </a>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button type="button" onClick={onPdf} disabled={busy !== null} className="px-3 py-2 bg-[#261F21] text-[#D8B268] text-xs font-bold rounded-xl flex items-center gap-1.5 disabled:opacity-40">
+          <Download className="w-4 h-4" /> {busy === 'pdf' ? 'Creazione…' : 'PDF (A4)'}
+        </button>
+        <button type="button" onClick={onPng} disabled={busy !== null} className="px-3 py-2 border border-[#DEC7CA] text-[#261F21] text-xs font-bold rounded-xl flex items-center gap-1.5 disabled:opacity-40">
+          <Download className="w-4 h-4" /> {busy === 'png' ? 'Creazione…' : 'PNG'}
+        </button>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-red-700">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+};
+
+export const QrPanel: React.FC = () => {
+  const base = PUBLIC_SITE_URL;
+  return (
     <section className={cardCls}>
       <div className="flex items-center gap-2">
         <QrCode className="w-5 h-5 text-[#AA853D]" />
-        <h3 className="font-serif text-lg font-bold text-[#261F21]">QR code stampabile</h3>
+        <h3 className="font-serif text-lg font-bold text-[#261F21]">QR code stampabili</h3>
       </div>
       <p className="text-[11px] text-[#8F7D82]">
-        Scarica il QR code che apre il sito, la prenotazione, le promo o la guida “come installare l’app sul telefono” (questa pagina non compare nel menu del sito): lo puoi stampare per la vetrina, i biglietti da visita e i volantini. Il PDF è un foglio A4 pronto da stampare; il PNG è l’immagine ad alta risoluzione del solo QR.
+        Tre QR pronti da stampare per vetrina, biglietti da visita e volantini. Il PDF è un foglio A4; il PNG è l’immagine ad alta risoluzione del solo QR. Toccando l’indirizzo sotto ogni QR puoi provarlo subito.
       </p>
-      <div className="grid sm:grid-cols-[auto,1fr] gap-5 items-start">
-        <div className="mx-auto sm:mx-0 p-3 border border-[#EEDFE1] rounded-2xl bg-white">
-          {preview ? <img src={preview} alt={`QR code: ${url}`} className="w-44 h-44 sm:w-52 sm:h-52" /> : <div className="w-44 h-44 sm:w-52 sm:h-52 bg-[#F7EFEF] rounded-lg" />}
-        </div>
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {TARGETS.map((x) => (
-              <button
-                key={x.id}
-                type="button"
-                onClick={() => setTarget(x.id)}
-                className={`px-3 py-2 rounded-xl text-xs font-semibold border ${target === x.id ? 'bg-[#261F21] text-[#D8B268] border-[#261F21]' : 'bg-white text-[#55474A] border-[#DEC7CA]'}`}
-              >
-                {x.label}
-              </button>
-            ))}
-          </div>
-          <label className="block space-y-1 text-[11px] font-medium text-[#55474A]">
-            <span>Indirizzo del sito (controlla che sia quello pubblico definitivo)</span>
-            <input value={base} onChange={(e) => setBase(e.target.value)} className={`${inputCls} w-full`} />
-          </label>
-          {/vercel\.app/i.test(base) && base.replace(/\/+$/, '') !== PUBLIC_SITE_URL && (
-            <p role="alert" className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
-              Attenzione: questo è un indirizzo di prova di Vercel e può chiedere l’accesso a Vercel. Scrivi qui l’indirizzo pubblico del sito (il tuo dominio) oppure, in Vercel, vai su Settings → Deployment Protection e disattiva la protezione per il sito pubblico.
-            </p>
-          )}
-          <p className="text-[11px] text-[#736266] break-all">
-            Il QR apre: <strong>{url}</strong>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={onPdf} disabled={busy !== null} className="px-4 py-2.5 bg-[#261F21] text-[#D8B268] text-xs font-bold rounded-xl flex items-center gap-1.5 disabled:opacity-40">
-              <Download className="w-4 h-4" /> {busy === 'pdf' ? 'Creazione…' : 'Scarica PDF (A4)'}
-            </button>
-            <button type="button" onClick={onPng} disabled={busy !== null} className="px-4 py-2.5 border border-[#DEC7CA] text-[#261F21] text-xs font-bold rounded-xl flex items-center gap-1.5 disabled:opacity-40">
-              <Download className="w-4 h-4" /> {busy === 'png' ? 'Creazione…' : 'Scarica PNG'}
-            </button>
-          </div>
-          {error && (
-            <p role="alert" className="text-xs text-red-700">
-              {error}
-            </p>
-          )}
-        </div>
+      <div className="grid sm:grid-cols-3 gap-4">
+        {TARGETS.map((t) => (
+          <QrCard key={t.id} t={t} url={`${base}/${t.hash}`} />
+        ))}
       </div>
     </section>
   );
