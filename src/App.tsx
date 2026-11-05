@@ -13,6 +13,7 @@ const ManagementPage = lazy(() => import('./pages/ManagementPage').then((m) => (
 import { LoginPage } from './pages/LoginPage';
 import { SetPasswordPage } from './pages/SetPasswordPage';
 import { AccountPage } from './pages/AccountPage';
+import { InstallAppPage } from './pages/InstallAppPage';
 import { IntroSplash } from './components/IntroSplash';
 import { WhatsAppButton } from './components/WhatsAppButton';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
@@ -66,7 +67,8 @@ export default function App() {
         'galleria',
         'chi-siamo',
         'gestionale',
-        'account'
+        'account',
+        'installa-app'
       ];
       // vecchi collegamenti salvati dalle clienti
       const legacy: Record<string, PageId> = {
@@ -157,6 +159,10 @@ export default function App() {
 
         {currentPage === 'account' && (
           <AccountPage onNavigate={navigateTo} />
+        )}
+
+        {currentPage === 'installa-app' && (
+          <InstallAppPage onNavigate={navigateTo} />
         )}
         </motion.div>
         </AnimatePresence>

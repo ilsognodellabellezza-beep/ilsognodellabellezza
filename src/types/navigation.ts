@@ -7,7 +7,8 @@ export type PageId =
   | 'galleria'
   | 'chi-siamo'
   | 'gestionale'
-  | 'account';
+  | 'account'
+  | 'installa-app';
 
 export interface NavigationProps {
   currentPage: PageId;

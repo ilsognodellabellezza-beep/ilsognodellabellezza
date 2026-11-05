@@ -64,12 +64,13 @@ export const ContactPanel: React.FC = () => {
 // ---------------------------------------------------------------------------
 // QR code
 // ---------------------------------------------------------------------------
-type Target = 'sito' | 'prenota' | 'promo';
+type Target = 'sito' | 'prenota' | 'promo' | 'app';
 
 const TARGETS: { id: Target; label: string; hash: string; caption: string }[] = [
   { id: 'sito', label: 'Sito', hash: '', caption: 'Scopri i nostri trattamenti' },
   { id: 'prenota', label: 'Pagina di prenotazione', hash: '#prenota', caption: 'Prenota il tuo appuntamento' },
   { id: 'promo', label: 'Pagina promo', hash: '#promo', caption: 'Scopri le nostre promozioni' },
+  { id: 'app', label: 'Come installare l’app', hash: '#installa-app', caption: 'Aggiungi il nostro sito al telefono' },
 ];
 
 /** PDF A4 con una sola immagine JPEG (nessuna libreria: struttura minima valida). */
@@ -222,7 +223,7 @@ export const QrPanel: React.FC = () => {
         <h3 className="font-serif text-lg font-bold text-[#261F21]">QR code stampabile</h3>
       </div>
       <p className="text-[11px] text-[#8F7D82]">
-        Scarica il QR code che apre il sito o la pagina di prenotazione: lo puoi stampare per la vetrina, i biglietti da visita e i volantini. Il PDF è un foglio A4 pronto da stampare; il PNG è l’immagine ad alta risoluzione del solo QR.
+        Scarica il QR code che apre il sito, la prenotazione, le promo o la guida “come installare l’app sul telefono” (questa pagina non compare nel menu del sito): lo puoi stampare per la vetrina, i biglietti da visita e i volantini. Il PDF è un foglio A4 pronto da stampare; il PNG è l’immagine ad alta risoluzione del solo QR.
       </p>
       <div className="grid sm:grid-cols-[auto,1fr] gap-5 items-start">
         <div className="mx-auto sm:mx-0 p-3 border border-[#EEDFE1] rounded-2xl bg-white">
@@ -245,6 +246,11 @@ export const QrPanel: React.FC = () => {
             <span>Indirizzo del sito (controlla che sia quello pubblico definitivo)</span>
             <input value={base} onChange={(e) => setBase(e.target.value)} className={`${inputCls} w-full`} />
           </label>
+          {/vercel.app/i.test(base) && (
+            <p role="alert" className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
+              Attenzione: questo è un indirizzo di prova di Vercel e può chiedere l’accesso a Vercel. Scrivi qui l’indirizzo pubblico del sito (il tuo dominio) oppure, in Vercel, vai su Settings → Deployment Protection e disattiva la protezione per il sito pubblico.
+            </p>
+          )}
           <p className="text-[11px] text-[#736266] break-all">
             Il QR apre: <strong>{url}</strong>
           </p>
