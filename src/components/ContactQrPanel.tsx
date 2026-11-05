@@ -160,9 +160,12 @@ const download = (blob: Blob, filename: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 };
 
+/** Indirizzo pubblico del sito: i QR puntano sempre qui, anche se il gestionale è aperto da un altro link. */
+const PUBLIC_SITE_URL = 'https://ilsognodellabellezza.vercel.app';
+
 export const QrPanel: React.FC = () => {
   const [target, setTarget] = useState<Target>('prenota');
-  const [base, setBase] = useState(() => window.location.origin);
+  const [base, setBase] = useState(PUBLIC_SITE_URL);
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState<'png' | 'pdf' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -246,7 +249,7 @@ export const QrPanel: React.FC = () => {
             <span>Indirizzo del sito (controlla che sia quello pubblico definitivo)</span>
             <input value={base} onChange={(e) => setBase(e.target.value)} className={`${inputCls} w-full`} />
           </label>
-          {/vercel.app/i.test(base) && (
+          {/vercel\.app/i.test(base) && base.replace(/\/+$/, '') !== PUBLIC_SITE_URL && (
             <p role="alert" className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-2.5">
               Attenzione: questo è un indirizzo di prova di Vercel e può chiedere l’accesso a Vercel. Scrivi qui l’indirizzo pubblico del sito (il tuo dominio) oppure, in Vercel, vai su Settings → Deployment Protection e disattiva la protezione per il sito pubblico.
             </p>
