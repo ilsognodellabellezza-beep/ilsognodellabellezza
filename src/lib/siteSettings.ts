@@ -45,6 +45,8 @@ export interface OperatorOverride {
   role: string | null;
   specialization: string | null;
   active: boolean;
+  /** eliminata dal titolare: non compare più da nessuna parte (si può ripristinare) */
+  deleted?: boolean;
 }
 
 const OPEN_DAY: DayHours = { open: true, from: '09:00', to: '18:30', breakFrom: '12:30', breakTo: '14:30' };
@@ -124,12 +126,13 @@ export function loadSiteConfig(force = false): Promise<void> {
     if (oo.error) console.warn('[siteSettings] modifiche ai dipendenti non disponibili:', oo.error.message);
     else {
       store.operatorOverrides = (oo.data ?? []).map(
-        (r: { operator_id: string; name: string | null; role: string | null; specialization: string | null; active: boolean }) => ({
+        (r: { operator_id: string; name: string | null; role: string | null; specialization: string | null; active: boolean; deleted?: boolean | null }) => ({
           operatorId: r.operator_id,
           name: r.name,
           role: r.role,
           specialization: r.specialization,
           active: r.active,
+          deleted: Boolean(r.deleted),
         })
       );
     }
@@ -228,7 +231,9 @@ export function applyOperatorOverride(base: Operator, o?: OperatorOverride): Ope
 
 function buildOperators(includeHidden: boolean): Operator[] {
   const byId = new Map(store.operatorOverrides.map((o) => [o.operatorId, o]));
-  const base = OPERATORS.map((op) => applyOperatorOverride(op, byId.get(op.id))).filter((op) => includeHidden || op.active !== false);
+  const base = OPERATORS.filter((op) => !byId.get(op.id)?.deleted)
+    .map((op) => applyOperatorOverride(op, byId.get(op.id)))
+    .filter((op) => includeHidden || op.active !== false);
   return [...base, ...store.customOperators.filter((o) => includeHidden || o.active !== false)];
 }
 
@@ -383,6 +388,8 @@ export async function saveOperatorOverride(o: OperatorOverride): Promise<void> {
     role: o.role,
     specialization: o.specialization,
     active: o.active,
+    // la colonna esiste solo dopo lo script 11: si invia solo quando serve
+    ...(o.deleted ? { deleted: true } : {}),
     updated_at: new Date().toISOString(),
   });
   if (error) throw new Error(error.message);

@@ -33,6 +33,7 @@ const SQL_HINT = 'Esegui lo script supabase/06-gestione-sito.sql nel database (S
 const SQL_HINT_09 = 'Esegui lo script supabase/09-titoli-dipendenti-prezzo-da.sql nel database (SQL Editor di Supabase).';
 const errMsg = (e: unknown) => {
   const m = (e as Error).message || '';
+  if (/\bdeleted\b/i.test(m)) return 'Esegui lo script supabase/11-elimina-dipendenti.sql nel database (SQL Editor di Supabase).';
   if (/price_from|operator_overrides|column .*name/i.test(m)) return SQL_HINT_09;
   return /site_settings|service_overrides|schema cache|relation/i.test(m) ? SQL_HINT : m;
 };
@@ -577,6 +578,8 @@ const CustomServiceCard: React.FC<{ service?: Service }> = ({ service }) => {
 const OperatorsEditor: React.FC = () => {
   const { allOperators, customOperators, operatorOverrides } = useSiteConfig();
   const fixed = allOperators.filter((o) => !o.custom);
+  const removed = OPERATORS.filter((o) => operatorOverrides.some((x) => x.operatorId === o.id && x.deleted));
+  const remaining = allOperators.filter((o) => o.active !== false).length;
   return (
     <section className={cardCls}>
       <div className="flex items-center gap-2">
@@ -588,9 +591,22 @@ const OperatorsEditor: React.FC = () => {
       </p>
       <div className="space-y-3">
         {fixed.map((o) => (
-          <FixedOperatorCard key={o.id} operator={o} override={operatorOverrides.find((x) => x.operatorId === o.id)} />
+          <FixedOperatorCard
+            key={o.id}
+            operator={o}
+            override={operatorOverrides.find((x) => x.operatorId === o.id)}
+            canDelete={remaining > 1 || o.active === false}
+          />
         ))}
       </div>
+      {removed.length > 0 && (
+        <div className="p-3 rounded-2xl border border-dashed border-[#DEC7CA] space-y-2">
+          <p className="text-[11px] font-semibold text-[#736266]">Dipendenti eliminate</p>
+          {removed.map((o) => (
+            <RemovedOperatorRow key={o.id} name={o.name} id={o.id} />
+          ))}
+        </div>
+      )}
       <div className="space-y-3">
         {customOperators.map((o) => (
           <CustomOperatorCard key={o.id} operator={o} />
@@ -602,7 +618,31 @@ const OperatorsEditor: React.FC = () => {
 };
 
 /** Dipendente storica: si possono cambiare nome, ruolo, specializzazione e visibilità. */
-const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverride }> = ({ operator, override }) => {
+const RemovedOperatorRow: React.FC<{ id: string; name: string }> = ({ id, name }) => {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const restore = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await resetOperatorOverride(id);
+    } catch (e) {
+      setErr(errMsg(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <span className="font-semibold text-[#261F21]">{name}</span>
+      <button type="button" onClick={restore} disabled={busy} className="px-3 py-1.5 border border-[#DEC7CA] rounded-xl font-semibold text-[#736266] flex items-center gap-1.5 disabled:opacity-40">
+        <RotateCcw className="w-3.5 h-3.5" /> Ripristina
+      </button>
+      {err && <span className="w-full text-[11px] font-semibold text-red-700">{err}</span>}
+    </div>
+  );
+};
+
+const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverride; canDelete: boolean }> = ({ operator, override, canDelete }) => {
   const original = OPERATORS.find((o) => o.id === operator.id)!;
   const initial = {
     name: operator.name,
@@ -637,6 +677,26 @@ const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverr
     } catch (e) {
       setMsg({ ok: false, text: errMsg(e) });
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!canDelete) return setMsg({ ok: false, text: 'Deve restare almeno una dipendente attiva.' });
+    if (!confirm(`Eliminare ${operator.name}? Sparisce da agenda, prenotazione e sito. Gli appuntamenti già registrati restano nell'agenda. Potrai ripristinarla dall'elenco "Dipendenti eliminate".`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await saveOperatorOverride({
+        operatorId: operator.id,
+        name: override?.name ?? null,
+        role: override?.role ?? null,
+        specialization: override?.specialization ?? null,
+        active: false,
+        deleted: true,
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg(e) });
       setBusy(false);
     }
   };
@@ -683,6 +743,9 @@ const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverr
             <RotateCcw className="w-3.5 h-3.5" /> Ripristina originale
           </button>
         )}
+        <button type="button" onClick={remove} disabled={busy} className="px-3 py-2 text-xs font-semibold text-red-700 border border-red-200 rounded-xl flex items-center gap-1.5 disabled:opacity-40">
+          <Trash2 className="w-3.5 h-3.5" /> Elimina
+        </button>
         {msg && (
           <span role="status" className={`text-xs font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
             {msg.text}
