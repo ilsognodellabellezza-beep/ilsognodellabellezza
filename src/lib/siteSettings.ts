@@ -243,6 +243,8 @@ function buildOperators(includeHidden: boolean): Operator[] {
 
 /** Operatrici abilitate a un servizio: per tipo (storiche), per elenco servizi della dipendente o per elenco del servizio. */
 export function operatorDoesService(op: Operator, service: Service): boolean {
+  // dipendente storica con elenco scelto nella sua scheda: quell'elenco vale sempre
+  if (!op.custom && op.serviceIds) return op.serviceIds.includes(service.id);
   if (service.operatorIds?.includes(op.id)) return true;
   // elenco scelto dal titolare (dipendenti aggiunte, o storiche modificate): vale solo quello
   if (op.serviceIds) return op.serviceIds.includes(service.id);
