@@ -45,6 +45,8 @@ export interface OperatorOverride {
   role: string | null;
   specialization: string | null;
   active: boolean;
+  /** servizi che esegue (null = quelli di default, decisi dal tipo di operatrice) */
+  serviceIds?: string[] | null;
   /** eliminata dal titolare: non compare più da nessuna parte (si può ripristinare) */
   deleted?: boolean;
 }
@@ -126,13 +128,14 @@ export function loadSiteConfig(force = false): Promise<void> {
     if (oo.error) console.warn('[siteSettings] modifiche ai dipendenti non disponibili:', oo.error.message);
     else {
       store.operatorOverrides = (oo.data ?? []).map(
-        (r: { operator_id: string; name: string | null; role: string | null; specialization: string | null; active: boolean; deleted?: boolean | null }) => ({
+        (r: { operator_id: string; name: string | null; role: string | null; specialization: string | null; active: boolean; deleted?: boolean | null; service_ids?: string[] | null }) => ({
           operatorId: r.operator_id,
           name: r.name,
           role: r.role,
           specialization: r.specialization,
           active: r.active,
           deleted: Boolean(r.deleted),
+          serviceIds: r.service_ids ?? null,
         })
       );
     }
@@ -226,6 +229,7 @@ export function applyOperatorOverride(base: Operator, o?: OperatorOverride): Ope
     role: o.role?.trim() ? o.role.trim() : base.role,
     specialization: o.specialization !== null ? o.specialization : base.specialization,
     active: o.active,
+    ...(o.serviceIds ? { serviceIds: o.serviceIds } : {}),
   };
 }
 
@@ -238,14 +242,16 @@ function buildOperators(includeHidden: boolean): Operator[] {
 }
 
 /** Operatrici abilitate a un servizio: per tipo (storiche), per elenco servizi della dipendente o per elenco del servizio. */
+export function operatorDoesService(op: Operator, service: Service): boolean {
+  if (service.operatorIds?.includes(op.id)) return true;
+  // elenco scelto dal titolare (dipendenti aggiunte, o storiche modificate): vale solo quello
+  if (op.serviceIds) return op.serviceIds.includes(service.id);
+  return !op.custom && service.operatorTypes.includes(op.type);
+}
+
 export function operatorsForService(service: Service | null, operators: Operator[]): Operator[] {
   if (!service) return operators;
-  const q = operators.filter(
-    (op) =>
-      service.operatorIds?.includes(op.id) ||
-      op.serviceIds?.includes(service.id) ||
-      (!op.custom && service.operatorTypes.includes(op.type))
-  );
+  const q = operators.filter((op) => operatorDoesService(op, service));
   return q.length > 0 ? q : operators;
 }
 
@@ -390,6 +396,8 @@ export async function saveOperatorOverride(o: OperatorOverride): Promise<void> {
     active: o.active,
     // la colonna esiste solo dopo lo script 11: si invia solo quando serve
     ...(o.deleted ? { deleted: true } : {}),
+    // la colonna service_ids esiste solo dopo lo script 12
+    ...(o.serviceIds !== undefined ? { service_ids: o.serviceIds } : {}),
     updated_at: new Date().toISOString(),
   });
   if (error) throw new Error(error.message);

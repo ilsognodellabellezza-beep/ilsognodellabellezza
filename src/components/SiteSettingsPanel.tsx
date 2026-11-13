@@ -14,6 +14,7 @@ import {
   deleteCustomOperator,
   saveOperatorOverride,
   resetOperatorOverride,
+  operatorDoesService,
   OperatorOverride,
   saveBookingSettings,
   saveServiceOverride,
@@ -33,6 +34,7 @@ const SQL_HINT = 'Esegui lo script supabase/06-gestione-sito.sql nel database (S
 const SQL_HINT_09 = 'Esegui lo script supabase/09-titoli-dipendenti-prezzo-da.sql nel database (SQL Editor di Supabase).';
 const errMsg = (e: unknown) => {
   const m = (e as Error).message || '';
+  if (/service_ids/i.test(m)) return 'Esegui lo script supabase/12-servizi-dipendenti-storiche.sql nel database (SQL Editor di Supabase).';
   if (/\bdeleted\b/i.test(m)) return 'Esegui lo script supabase/11-elimina-dipendenti.sql nel database (SQL Editor di Supabase).';
   if (/price_from|operator_overrides|column .*name/i.test(m)) return SQL_HINT_09;
   return /site_settings|service_overrides|schema cache|relation/i.test(m) ? SQL_HINT : m;
@@ -643,13 +645,18 @@ const RemovedOperatorRow: React.FC<{ id: string; name: string }> = ({ id, name }
 };
 
 const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverride; canDelete: boolean }> = ({ operator, override, canDelete }) => {
+  const { allServices } = useSiteConfig();
   const original = OPERATORS.find((o) => o.id === operator.id)!;
+  const defaultServiceIds = allServices.filter((s) => operatorDoesService(original, s)).map((s) => s.id);
   const initial = {
     name: operator.name,
     role: operator.role,
     specialization: operator.specialization,
     active: operator.active !== false,
+    serviceIds: allServices.filter((s) => operatorDoesService(operator, s)).map((s) => s.id),
   };
+  const toggleService = (id: string) =>
+    setF((x) => ({ ...x, serviceIds: x.serviceIds.includes(id) ? x.serviceIds.filter((s) => s !== id) : [...x.serviceIds, id] }));
   const [f, setF] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -672,6 +679,13 @@ const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverr
         role: f.role.trim() === original.role ? null : f.role.trim(),
         specialization: f.specialization.trim() === original.specialization ? null : f.specialization.trim(),
         active: f.active,
+        // uguale all'elenco di default → si torna al comportamento originale
+        serviceIds:
+          f.serviceIds.length === defaultServiceIds.length && f.serviceIds.every((id) => defaultServiceIds.includes(id))
+            ? override?.serviceIds
+              ? null
+              : undefined
+            : f.serviceIds,
       });
       setMsg({ ok: true, text: 'Salvato' });
     } catch (e) {
@@ -694,6 +708,7 @@ const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverr
         specialization: override?.specialization ?? null,
         active: false,
         deleted: true,
+        serviceIds: override?.serviceIds,
       });
     } catch (e) {
       setMsg({ ok: false, text: errMsg(e) });
@@ -729,6 +744,22 @@ const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverr
           <span>Specializzazione</span>
           <input value={f.specialization} onChange={(e) => setF({ ...f, specialization: e.target.value })} maxLength={200} className={`${inputCls} w-full`} />
         </label>
+      </div>
+      <div className="space-y-1.5">
+        <span className="text-[11px] font-medium text-[#55474A]">Servizi che esegue (prenotabili online con lei)</span>
+        <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
+          {allServices.map((s) => (
+            <label
+              key={s.id}
+              className={`px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
+                f.serviceIds.includes(s.id) ? 'bg-[#261F21] text-[#D8B268] border-[#261F21]' : 'bg-white text-[#55474A] border-[#DEC7CA]'
+              }`}
+            >
+              <input type="checkbox" className="sr-only" checked={f.serviceIds.includes(s.id)} onChange={() => toggleService(s.id)} />
+              {s.name}
+            </label>
+          ))}
+        </div>
       </div>
       <label className="flex items-center gap-2 text-xs font-semibold text-[#261F21] cursor-pointer">
         <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />
