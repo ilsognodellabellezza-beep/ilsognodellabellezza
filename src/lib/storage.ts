@@ -71,6 +71,7 @@ function mapAppointment(r: any): Appointment {
     status: r.status,
     notes: r.notes ?? undefined,
     reminderSent: r.reminder_sent,
+    whatsappReminderSent: r.whatsapp_reminder_sent ?? false,
     createdAt: r.created_at,
   };
 }
@@ -263,6 +264,14 @@ export async function updateAppointmentStatus(id: string, status: Appointment['s
   const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
   fail('aggiornamento appuntamento', error);
   cache.appointments = cache.appointments.map((a) => (a.id === id ? { ...a, status } : a));
+  emitChange();
+}
+
+/** Segna come inviato (o da inviare) il promemoria WhatsApp di un appuntamento. */
+export async function setWhatsappReminderSent(id: string, sent: boolean): Promise<void> {
+  const { error } = await supabase.from('appointments').update({ whatsapp_reminder_sent: sent }).eq('id', id);
+  fail('aggiornamento promemoria WhatsApp', error);
+  cache.appointments = cache.appointments.map((a) => (a.id === id ? { ...a, whatsappReminderSent: sent } : a));
   emitChange();
 }
 

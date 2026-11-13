@@ -205,7 +205,7 @@ export const ReviewsPage: React.FC<ReviewsPageProps> = ({ onNavigate }) => {
               >
                 <option value="Laser EPILED 818NM">Laser EPILED 818NM</option>
                 <option value="Laminazione Ciglia & Botox">Laminazione Ciglia & Botox</option>
-                <option value="Massaggio Linfodrenante (Solo Donna)">Massaggio Linfodrenante (Solo Donna)</option>
+                <option value="Massaggio Linfodrenante">Massaggio Linfodrenante </option>
                 <option value="Pulizia Viso Idra-Glow">Pulizia Viso Idra-Glow</option>
                 <option value="Manicure Russa & Semipermanente">Manicure Russa & Semipermanente</option>
                 <option value="Architettura Sopracciglia Henné">Architettura Sopracciglia Henné</option>

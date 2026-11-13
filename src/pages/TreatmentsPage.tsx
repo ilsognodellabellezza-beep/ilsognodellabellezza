@@ -11,14 +11,20 @@ interface TreatmentsPageProps {
 
 const norm = (v: string) => v.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+const FromLabel: React.FC = () => <span className="text-[10px] font-semibold uppercase tracking-wide text-[#8F7D82]">a partire da</span>;
+
 const PriceTag: React.FC<{ service: Service; big?: boolean }> = ({ service, big }) =>
   service.promoPrice ? (
-    <div className="flex items-baseline gap-2">
+    <div className="flex items-baseline gap-2 flex-wrap">
+      {service.priceFrom && <FromLabel />}
       <span className={`font-serif font-bold text-[#AA853D] ${big ? 'text-2xl' : 'text-lg'}`}>€{service.promoPrice.toFixed(2)}</span>
       <span className="text-xs text-[#8F7D82] line-through">€{service.price.toFixed(2)}</span>
     </div>
   ) : (
-    <span className={`font-serif font-bold text-[#261F21] ${big ? 'text-2xl' : 'text-lg'}`}>€{service.price.toFixed(2)}</span>
+    <div className="flex items-baseline gap-1.5 flex-wrap">
+      {service.priceFrom && <FromLabel />}
+      <span className={`font-serif font-bold text-[#261F21] ${big ? 'text-2xl' : 'text-lg'}`}>€{service.price.toFixed(2)}</span>
+    </div>
   );
 
 export const TreatmentsPage: React.FC<TreatmentsPageProps> = ({ onNavigate }) => {

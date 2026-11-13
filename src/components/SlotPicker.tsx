@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { getBookedSlots, BookedSlot } from '../lib/storage';
 import { timeToMinutes } from '../lib/dates';
-import { useSiteConfig, slotsForDay } from '../lib/siteSettings';
-import { useSalon, isBlockedSlot } from '../lib/salon';
+import { useSiteConfig, slotsForDay, endsOfBookings } from '../lib/siteSettings';
+import { useSalon, isBlockedSlot, blockEndMinutes } from '../lib/salon';
 
 interface SlotPickerProps {
   date: string;
@@ -12,6 +12,8 @@ interface SlotPickerProps {
   onTimeChange: (t: string) => void;
   operatorId: string;
   durationMinutes: number;
+  /** servizio scelto: serve per i blocchi che valgono solo per certi servizi */
+  serviceId?: string;
   /** cambia quando serve ricaricare le prenotazioni (es. dopo un salvataggio) */
   refreshKey?: number;
 }
@@ -27,11 +29,11 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
   onTimeChange,
   operatorId,
   durationMinutes,
+  serviceId,
   refreshKey = 0,
 }) => {
   const { settings } = useSiteConfig();
   useSalon(); // chiusure e blocchi aggiornati
-  const baseSlots = date ? slotsForDay(settings, date, durationMinutes) : [];
   const [booked, setBooked] = useState<BookedSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -50,10 +52,15 @@ export const SlotPicker: React.FC<SlotPickerProps> = ({
     };
   }, [date, refreshKey]);
 
+  // oltre alla griglia, si propone l'orario in cui finisce un altro appuntamento o un blocco della stessa operatrice
+  const baseSlots = date
+    ? slotsForDay(settings, date, durationMinutes, [...endsOfBookings(booked, [operatorId]), ...blockEndMinutes(date, operatorId)])
+    : [];
+
   const isFree = (t: string) => {
     const start = timeToMinutes(t);
     const end = start + durationMinutes;
-    if (isBlockedSlot(date, t, durationMinutes, operatorId)) return false;
+    if (isBlockedSlot(date, t, durationMinutes, operatorId, serviceId)) return false;
     return !booked.some((b) => {
       if (b.operatorId !== operatorId) return false;
       const bs = timeToMinutes(b.startTime);

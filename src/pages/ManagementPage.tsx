@@ -42,6 +42,7 @@ import { SearchPicker } from '../components/SearchPicker';
 import { toLocalDateStr, addDays } from '../lib/dates';
 import { SiteSettingsPanel } from '../components/SiteSettingsPanel';
 import { AgendaTab } from '../components/AgendaBoard';
+import { WhatsappReminders } from '../components/WhatsappReminders';
 import { PromoManager } from '../components/PromoManager';
 import { ClosuresPanel } from '../components/ClosuresPanel';
 import { BlocksPanel } from '../components/BlocksPanel';
@@ -299,6 +300,8 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
 
         {/* AGENDA */}
         {activeTab === 'agenda' && (
+          <div className="space-y-4">
+          <WhatsappReminders appointments={appointments} />
           <AgendaTab
             appointments={appointments}
             onPreviewEmail={(a) => setPreviewEmailApp(a)}
@@ -444,6 +447,7 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
               </div>
             }
           />
+          </div>
         )}
 
         {/* CLIENTI */}
@@ -682,7 +686,7 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-[#261F21]">Trattamento</label>
                     <SearchPicker
-                      items={SERVICES.map((s) => ({ id: s.id, label: s.name, hint: `${s.categoryLabel} · €${s.promoPrice || s.price}` }))}
+                      items={SERVICES.map((s) => ({ id: s.id, label: s.name, hint: `${s.categoryLabel} · ${s.priceFrom ? 'da ' : ''}€${s.promoPrice || s.price}` }))}
                       value={newServiceId}
                       onChange={setNewServiceId}
                       placeholder="Cerca trattamento…"
@@ -711,6 +715,7 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
                   onTimeChange={setNewTime}
                   operatorId={newOperatorId}
                   durationMinutes={(SERVICES.find((s) => s.id === newServiceId) || SERVICES[0]).durationMinutes}
+                  serviceId={newServiceId}
                   refreshKey={appointments.length}
                 />
 

@@ -30,9 +30,20 @@ export interface BookingSettings {
 
 export interface ServiceOverride {
   serviceId: string;
+  /** titolo personalizzato (null = quello originale) */
+  name: string | null;
+  priceFrom: boolean;
   price: number | null;
   promoPrice: number | null;
   durationMinutes: number | null;
+  active: boolean;
+}
+
+export interface OperatorOverride {
+  operatorId: string;
+  name: string | null;
+  role: string | null;
+  specialization: string | null;
   active: boolean;
 }
 
@@ -57,6 +68,7 @@ const store = {
   overrides: [] as ServiceOverride[],
   customServices: [] as Service[],
   customOperators: [] as Operator[],
+  operatorOverrides: [] as OperatorOverride[],
   loaded: false,
   loading: null as Promise<void> | null,
 };
@@ -82,19 +94,22 @@ function normalizeSettings(raw: unknown): BookingSettings {
 export function loadSiteConfig(force = false): Promise<void> {
   if (store.loading && !force) return store.loading;
   store.loading = (async () => {
-    const [s, o, cs, co] = await Promise.all([
+    const [s, o, cs, co, oo] = await Promise.all([
       supabase.from('site_settings').select('value').eq('key', 'booking').maybeSingle(),
       supabase.from('service_overrides').select('*'),
       supabase.from('custom_services').select('*').order('created_at'),
       supabase.from('custom_operators').select('*').order('created_at'),
+      supabase.from('operator_overrides').select('*'),
     ]);
     if (s.error) console.warn('[siteSettings] impostazioni non disponibili, uso i valori predefiniti:', s.error.message);
     else if (s.data) store.settings = normalizeSettings(s.data.value);
     if (o.error) console.warn('[siteSettings] prezzi personalizzati non disponibili:', o.error.message);
     else {
       store.overrides = (o.data ?? []).map(
-        (r: { service_id: string; price: number | null; promo_price: number | null; duration_minutes: number | null; active: boolean }) => ({
+        (r: { service_id: string; name?: string | null; price_from?: boolean | null; price: number | null; promo_price: number | null; duration_minutes: number | null; active: boolean }) => ({
           serviceId: r.service_id,
+          name: r.name ?? null,
+          priceFrom: Boolean(r.price_from),
           price: r.price === null ? null : Number(r.price),
           promoPrice: r.promo_price === null ? null : Number(r.promo_price),
           durationMinutes: r.duration_minutes,
@@ -106,6 +121,18 @@ export function loadSiteConfig(force = false): Promise<void> {
     else store.customServices = (cs.data ?? []).map(mapCustomService);
     if (co.error) console.warn('[siteSettings] dipendenti personalizzati non disponibili:', co.error.message);
     else store.customOperators = (co.data ?? []).map(mapCustomOperator);
+    if (oo.error) console.warn('[siteSettings] modifiche ai dipendenti non disponibili:', oo.error.message);
+    else {
+      store.operatorOverrides = (oo.data ?? []).map(
+        (r: { operator_id: string; name: string | null; role: string | null; specialization: string | null; active: boolean }) => ({
+          operatorId: r.operator_id,
+          name: r.name,
+          role: r.role,
+          specialization: r.specialization,
+          active: r.active,
+        })
+      );
+    }
     store.loaded = true;
     notify();
   })();
@@ -119,6 +146,8 @@ export function applyOverride(base: Service, o?: ServiceOverride): Service {
   if (!o) return base;
   return {
     ...base,
+    name: o.name?.trim() ? o.name.trim() : base.name,
+    priceFrom: o.priceFrom,
     price: o.price ?? base.price,
     promoPrice: o.promoPrice ?? undefined,
     durationMinutes: o.durationMinutes ?? base.durationMinutes,
@@ -127,7 +156,7 @@ export function applyOverride(base: Service, o?: ServiceOverride): Service {
 
 export const CATEGORY_LABELS: Record<TreatmentCategory, string> = {
   viso: 'Trattamenti viso',
-  corpo: 'Trattamento corpo (solo donna)',
+  corpo: 'Trattamento corpo',
   mani: 'Trattamento mani',
   pedicure: 'Trattamento pedicure',
   makeup: 'Make up',
@@ -149,6 +178,7 @@ function mapCustomService(r: any): Service {
     categoryLabel: CATEGORY_LABELS[category] ?? 'Altri trattamenti',
     price: Number(r.price),
     promoPrice: r.promo_price === null ? undefined : Number(r.promo_price),
+    priceFrom: Boolean(r.price_from),
     durationMinutes: r.duration_minutes,
     description: r.description ?? '',
     benefits: [],
@@ -185,8 +215,21 @@ function buildServices(includeHidden: boolean): Service[] {
   return [...base, ...custom];
 }
 
+export function applyOperatorOverride(base: Operator, o?: OperatorOverride): Operator {
+  if (!o) return base;
+  return {
+    ...base,
+    name: o.name?.trim() ? o.name.trim() : base.name,
+    role: o.role?.trim() ? o.role.trim() : base.role,
+    specialization: o.specialization !== null ? o.specialization : base.specialization,
+    active: o.active,
+  };
+}
+
 function buildOperators(includeHidden: boolean): Operator[] {
-  return [...OPERATORS, ...store.customOperators.filter((o) => includeHidden || o.active !== false)];
+  const byId = new Map(store.operatorOverrides.map((o) => [o.operatorId, o]));
+  const base = OPERATORS.map((op) => applyOperatorOverride(op, byId.get(op.id))).filter((op) => includeHidden || op.active !== false);
+  return [...base, ...store.customOperators.filter((o) => includeHidden || o.active !== false)];
 }
 
 /** Operatrici abilitate a un servizio: per tipo (storiche), per elenco servizi della dipendente o per elenco del servizio. */
@@ -203,6 +246,10 @@ export function operatorsForService(service: Service | null, operators: Operator
 
 export const getOverrides = () => store.overrides;
 
+/** Testo del prezzo: "€35.00" oppure "a partire da €35.00" */
+export const priceLabel = (amount: number, priceFrom?: boolean) =>
+  `${priceFrom ? 'a partire da ' : ''}€${amount.toFixed(2)}`;
+
 /** Hook: impostazioni + servizi aggiornati. Carica una volta sola e si aggiorna dopo ogni salvataggio. */
 export function useSiteConfig() {
   const [, force] = useState(0);
@@ -217,14 +264,15 @@ export function useSiteConfig() {
   const overrides = store.overrides;
   const customServices = store.customServices;
   const customOperators = store.customOperators;
+  const operatorOverrides = store.operatorOverrides;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const services = useMemo(() => buildServices(false), [overrides, customServices]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const allServices = useMemo(() => buildServices(true), [overrides, customServices]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const operators = useMemo(() => buildOperators(false), [customOperators]);
+  const operators = useMemo(() => buildOperators(false), [customOperators, operatorOverrides]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const allOperators = useMemo(() => buildOperators(true), [customOperators]);
+  const allOperators = useMemo(() => buildOperators(true), [customOperators, operatorOverrides]);
   return {
     settings: store.settings,
     /** servizi prenotabili (esclusi quelli nascosti dal titolare) */
@@ -237,6 +285,7 @@ export function useSiteConfig() {
     customServices,
     customOperators,
     overrides: store.overrides,
+    operatorOverrides,
     loaded: store.loaded,
   };
 }
@@ -256,6 +305,8 @@ export async function saveBookingSettings(settings: BookingSettings): Promise<vo
 export async function saveServiceOverride(o: ServiceOverride): Promise<void> {
   const { error } = await supabase.from('service_overrides').upsert({
     service_id: o.serviceId,
+    name: o.name,
+    price_from: o.priceFrom,
     price: o.price,
     promo_price: o.promoPrice,
     duration_minutes: o.durationMinutes,
@@ -278,6 +329,7 @@ export interface NewServiceInput {
   name: string;
   category: TreatmentCategory;
   price: number;
+  priceFrom: boolean;
   promoPrice: number | null;
   durationMinutes: number;
   description: string;
@@ -299,6 +351,7 @@ export async function saveCustomService(input: NewServiceInput, id?: string): Pr
       name: input.name.trim(),
       category: input.category,
       price: input.price,
+      price_from: input.priceFrom,
       promo_price: input.promoPrice,
       duration_minutes: input.durationMinutes,
       description: input.description.trim(),
@@ -320,6 +373,27 @@ export async function deleteCustomService(id: string): Promise<void> {
   const { error } = await supabase.from('custom_services').delete().eq('id', id);
   if (error) throw new Error(error.message);
   store.customServices = store.customServices.filter((x) => x.id !== id);
+  notify();
+}
+
+export async function saveOperatorOverride(o: OperatorOverride): Promise<void> {
+  const { error } = await supabase.from('operator_overrides').upsert({
+    operator_id: o.operatorId,
+    name: o.name,
+    role: o.role,
+    specialization: o.specialization,
+    active: o.active,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  store.operatorOverrides = [...store.operatorOverrides.filter((x) => x.operatorId !== o.operatorId), o];
+  notify();
+}
+
+export async function resetOperatorOverride(operatorId: string): Promise<void> {
+  const { error } = await supabase.from('operator_overrides').delete().eq('operator_id', operatorId);
+  if (error) throw new Error(error.message);
+  store.operatorOverrides = store.operatorOverrides.filter((x) => x.operatorId !== operatorId);
   notify();
 }
 
@@ -378,7 +452,13 @@ export function isOpenOn(settings: BookingSettings, dateStr: string): boolean {
  * un servizio deve FINIRE entro l'orario di chiusura e non può sovrapporsi alla pausa.
  * Es. chiusura 18:30: un servizio da 30 min può iniziare alle 18:00, uno da 60 min alle 17:30.
  */
-export function slotsForDay(settings: BookingSettings, dateStr: string, durationMinutes: number): string[] {
+export function slotsForDay(
+  settings: BookingSettings,
+  dateStr: string,
+  durationMinutes: number,
+  /** altri orari di inizio da proporre (minuti): es. la fine di un appuntamento già presente */
+  extraStarts: number[] = []
+): string[] {
   const h = dayStatus(settings, dateStr).hours;
   if (!h || !h.open) return [];
   const from = timeToMinutes(h.from);
@@ -386,12 +466,27 @@ export function slotsForDay(settings: BookingSettings, dateStr: string, duration
   const hasBreak = Boolean(h.breakFrom && h.breakTo);
   const bFrom = hasBreak ? timeToMinutes(h.breakFrom) : 0;
   const bTo = hasBreak ? timeToMinutes(h.breakTo) : 0;
-  const out: string[] = [];
-  for (let start = from; start + durationMinutes <= to; start += settings.slotStepMinutes) {
-    if (hasBreak && start < bTo && bFrom < start + durationMinutes) continue;
-    out.push(minutesToTime(start));
+  // il passo segue la durata del servizio: un trattamento da 10 minuti si può prenotare ogni 10 minuti,
+  // uno lungo segue il passo impostato dal titolare (mai meno di 5 minuti)
+  const step = Math.max(5, Math.min(settings.slotStepMinutes, durationMinutes));
+  const starts = new Set<number>();
+  for (let start = from; start + durationMinutes <= to; start += step) starts.add(start);
+  // dopo un appuntamento (o un blocco, o la pausa) l'operatrice è libera subito: si propone quell'orario
+  for (const start of [...extraStarts, ...(hasBreak ? [bTo] : [])]) {
+    if (start >= from && start + durationMinutes <= to) starts.add(start);
   }
-  return out;
+  return [...starts]
+    .filter((start) => !(hasBreak && start < bTo && bFrom < start + durationMinutes))
+    .sort((a, b) => a - b)
+    .map(minutesToTime);
+}
+
+/** Orari in cui finiscono gli appuntamenti delle operatrici indicate: da lì si può iniziare un altro servizio. */
+export function endsOfBookings(
+  bookings: { operatorId: string; startTime: string; durationMinutes: number }[],
+  operatorIds: string[]
+): number[] {
+  return bookings.filter((b) => operatorIds.includes(b.operatorId)).map((b) => timeToMinutes(b.startTime) + b.durationMinutes);
 }
 
 /** Testo sintetico degli orari, es. "Martedì – Sabato: 09:00 – 18:30 (Domenica e Lunedì chiuso)". */

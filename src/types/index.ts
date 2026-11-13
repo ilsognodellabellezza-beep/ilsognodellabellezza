@@ -14,6 +14,8 @@ export interface Service {
   categoryLabel: string;
   price: number;
   promoPrice?: number;
+  /** mostra "a partire da" davanti al prezzo */
+  priceFrom?: boolean;
   durationMinutes: number;
   description: string;
   benefits: string[];
@@ -61,6 +63,7 @@ export interface Appointment {
   status: AppointmentStatus;
   notes?: string;
   reminderSent?: boolean;
+  whatsappReminderSent?: boolean;
   createdAt: string;
 }
 

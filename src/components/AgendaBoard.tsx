@@ -40,7 +40,7 @@ interface AgendaBoardProps {
 
 /** Agenda giornaliera a colonne, una per operatrice, righe da 30 minuti: come l'agenda cartacea del salone. */
 export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, onStatusChange, onAddAt, onPreviewEmail }) => {
-  const { operators, settings } = useSiteConfig();
+  const { operators, settings, allServices } = useSiteConfig();
   const { blocks } = useSalon();
   const [date, setDate] = useState(toLocalDateStr());
   const [showCancelled, setShowCancelled] = useState(false);
@@ -119,7 +119,7 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, onStatus
           <p className="text-[11px] text-[#8F7D82]">
             {visible.length} {visible.length === 1 ? 'appuntamento' : 'appuntamenti'}
             {!isOpenOn(settings, date) && ' · salone chiuso'}
-            {blocks.some((b) => date >= b.startDate && date <= b.endDate && b.operatorId === null && !b.fromTime) && ' · giorno bloccato'}
+            {blocks.some((b) => date >= b.startDate && date <= b.endDate && b.operatorId === null && !b.fromTime && b.serviceIds.length === 0) && ' · giorno bloccato'}
             {cancelledCount > 0 && (
               <>
                 {' · '}
@@ -184,10 +184,11 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, onStatus
                       const from = b.fromTime ? Math.max(timeToMinutes(b.fromTime), startMin) : startMin;
                       const to = b.toTime ? Math.min(timeToMinutes(b.toTime), endMin) : endMin;
                       if (to <= from) return null;
+                      const only = b.serviceIds.map((id) => allServices.find((s) => s.id === id)?.name ?? 'Servizio').join(', ');
                       return (
                         <div
                           key={b.id}
-                          title={b.note ? `Bloccato: ${b.note}` : 'Orario bloccato'}
+                          title={(b.serviceIds.length > 0 ? `Bloccato solo: ${only}` : 'Orario bloccato') + (b.note ? ` — ${b.note}` : '')}
                           style={{
                             top: ((from - startMin) / 30) * ROW,
                             height: ((to - from) / 30) * ROW,
@@ -195,7 +196,9 @@ export const AgendaBoard: React.FC<AgendaBoardProps> = ({ appointments, onStatus
                           }}
                           className="absolute inset-x-0 z-[5] pointer-events-none border-y border-[#8A3B49]/30 flex items-start justify-center pt-1"
                         >
-                          <span className="text-[10px] font-bold text-[#8A3B49] bg-white/80 rounded px-1">Bloccato</span>
+                          <span className="text-[10px] font-bold text-[#8A3B49] bg-white/80 rounded px-1 max-w-full truncate">
+                            {b.serviceIds.length > 0 ? `Bloccato: ${only}` : 'Bloccato'}
+                          </span>
                         </div>
                       );
                     })}

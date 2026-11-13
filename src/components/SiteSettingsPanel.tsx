@@ -12,6 +12,9 @@ import {
   deleteCustomService,
   saveCustomOperator,
   deleteCustomOperator,
+  saveOperatorOverride,
+  resetOperatorOverride,
+  OperatorOverride,
   saveBookingSettings,
   saveServiceOverride,
   useSiteConfig,
@@ -19,7 +22,7 @@ import {
 } from '../lib/siteSettings';
 import { ContactPanel, QrPanel } from './ContactQrPanel';
 import { TeamPhotosPanel } from './PhotosPanel';
-import { SERVICES } from '../data/mockData';
+import { SERVICES, OPERATORS } from '../data/mockData';
 import { timeToMinutes } from '../lib/dates';
 
 const inputCls =
@@ -27,12 +30,15 @@ const inputCls =
 const cardCls = 'bg-white border border-[#EEDFE1] rounded-3xl p-5 sm:p-6 space-y-4';
 
 const SQL_HINT = 'Esegui lo script supabase/06-gestione-sito.sql nel database (SQL Editor di Supabase).';
+const SQL_HINT_09 = 'Esegui lo script supabase/09-titoli-dipendenti-prezzo-da.sql nel database (SQL Editor di Supabase).';
 const errMsg = (e: unknown) => {
   const m = (e as Error).message || '';
+  if (/price_from|operator_overrides|column .*name/i.test(m)) return SQL_HINT_09;
   return /site_settings|service_overrides|schema cache|relation/i.test(m) ? SQL_HINT : m;
 };
 const errMsg2 = (e: unknown) => {
   const m = (e as Error).message || '';
+  if (/price_from/i.test(m)) return SQL_HINT_09;
   return /custom_services|custom_operators|schema cache|relation/i.test(m)
     ? 'Esegui lo script supabase/07-servizi-dipendenti.sql nel database (SQL Editor di Supabase).'
     : m;
@@ -237,6 +243,8 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
   const ov = overrides.find((o) => o.serviceId === serviceId);
 
   const initial = {
+    name: ov?.name ?? base.name,
+    priceFrom: ov?.priceFrom ?? false,
     price: String(ov?.price ?? base.price),
     promo: ov ? (ov.promoPrice === null ? '' : String(ov.promoPrice)) : base.promoPrice !== undefined ? String(base.promoPrice) : '',
     duration: String(ov?.durationMinutes ?? base.durationMinutes),
@@ -259,6 +267,7 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
     const price = numOrNull(f.price);
     const promo = numOrNull(f.promo);
     const duration = numOrNull(f.duration);
+    if (f.name.trim().length < 2) return setMsg({ ok: false, text: 'Il titolo deve avere almeno 2 caratteri.' });
     if (price === null || !(price >= 0)) return setMsg({ ok: false, text: 'Prezzo non valido.' });
     if (promo !== null && !(promo >= 0 && promo < price)) return setMsg({ ok: false, text: 'La promo deve essere minore del prezzo.' });
     if (duration === null || !Number.isInteger(duration) || duration < 5 || duration > 480)
@@ -266,7 +275,16 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
     setBusy(true);
     setMsg(null);
     try {
-      await saveServiceOverride({ serviceId, price, promoPrice: promo, durationMinutes: duration, active: f.active });
+      const title = f.name.trim();
+      await saveServiceOverride({
+        serviceId,
+        name: title === base.name ? null : title,
+        priceFrom: f.priceFrom,
+        price,
+        promoPrice: promo,
+        durationMinutes: duration,
+        active: f.active,
+      });
       setMsg({ ok: true, text: 'Salvato' });
     } catch (e) {
       setMsg({ ok: false, text: errMsg(e) });
@@ -293,13 +311,17 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <div>
           <span className="text-[10px] font-semibold text-[#AA853D] uppercase tracking-wide">{base.categoryLabel}</span>
-          <h4 className="font-serif font-bold text-sm text-[#261F21]">{base.name}</h4>
+          <h4 className="font-serif font-bold text-sm text-[#261F21]">{ov?.name?.trim() ? ov.name : base.name}</h4>
         </div>
         <label className="flex items-center gap-2 text-xs font-semibold text-[#261F21] cursor-pointer">
           <input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} className="w-4 h-4 accent-[#AA853D]" />
           Visibile sul sito
         </label>
       </div>
+      <label className="block space-y-1 text-[11px] font-medium text-[#55474A] mb-3">
+        <span>Titolo del servizio</span>
+        <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={160} className={`${inputCls} w-full`} />
+      </label>
       <div className="grid grid-cols-3 gap-3">
         <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
           <span>Prezzo (€)</span>
@@ -314,6 +336,10 @@ const ServiceRow: React.FC<{ serviceId: string; overrides: ServiceOverride[] }> 
           <input inputMode="numeric" value={f.duration} onChange={(e) => setF({ ...f, duration: e.target.value })} className={`${inputCls} w-full`} />
         </label>
       </div>
+      <label className="flex items-center gap-2 mt-3 text-xs font-semibold text-[#261F21] cursor-pointer">
+        <input type="checkbox" checked={f.priceFrom} onChange={(e) => setF({ ...f, priceFrom: e.target.checked })} className="w-4 h-4 accent-[#AA853D]" />
+        Mostra “a partire da” davanti al prezzo
+      </label>
       <div className="flex flex-wrap items-center gap-3 mt-3">
         <button
           type="button"
@@ -377,6 +403,7 @@ const CustomServiceCard: React.FC<{ service?: Service }> = ({ service }) => {
     name: service?.name ?? '',
     category: (service?.category ?? 'viso') as TreatmentCategory,
     price: service ? String(service.price) : '',
+    priceFrom: service?.priceFrom ?? false,
     promo: service?.promoPrice !== undefined ? String(service.promoPrice) : '',
     duration: service ? String(service.durationMinutes) : '60',
     description: service?.description ?? '',
@@ -409,6 +436,7 @@ const CustomServiceCard: React.FC<{ service?: Service }> = ({ service }) => {
           name: f.name,
           category: f.category,
           price,
+          priceFrom: f.priceFrom,
           promoPrice: promo,
           durationMinutes: duration,
           description: f.description,
@@ -510,6 +538,9 @@ const CustomServiceCard: React.FC<{ service?: Service }> = ({ service }) => {
           <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.onlyWomen} onChange={(e) => setF({ ...f, onlyWomen: e.target.checked })} /> Riservato alle donne
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.priceFrom} onChange={(e) => setF({ ...f, priceFrom: e.target.checked })} /> Mostra “a partire da”
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.isPopular} onChange={(e) => setF({ ...f, isPopular: e.target.checked })} /> Più richiesto
         </label>
         <label className="flex items-center gap-2 cursor-pointer">
@@ -544,8 +575,8 @@ const CustomServiceCard: React.FC<{ service?: Service }> = ({ service }) => {
 // Dipendenti / operatrici
 // ---------------------------------------------------------------------------
 const OperatorsEditor: React.FC = () => {
-  const { operators, customOperators } = useSiteConfig();
-  const fixed = operators.filter((o) => !o.custom);
+  const { allOperators, customOperators, operatorOverrides } = useSiteConfig();
+  const fixed = allOperators.filter((o) => !o.custom);
   return (
     <section className={cardCls}>
       <div className="flex items-center gap-2">
@@ -555,11 +586,9 @@ const OperatorsEditor: React.FC = () => {
       <p className="text-[11px] text-[#8F7D82]">
         Ogni dipendente ha la sua colonna nell'agenda e si può scegliere nella prenotazione online per i servizi che le assegni. Puoi caricare la sua foto qui sotto, nella sezione “Foto del team”.
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="space-y-3">
         {fixed.map((o) => (
-          <span key={o.id} className="px-3 py-1.5 rounded-full bg-[#FAF5F5] border border-[#EEDFE1] text-xs font-semibold text-[#261F21]">
-            {o.name} <span className="font-normal text-[#8F7D82]">· {o.role}</span>
-          </span>
+          <FixedOperatorCard key={o.id} operator={o} override={operatorOverrides.find((x) => x.operatorId === o.id)} />
         ))}
       </div>
       <div className="space-y-3">
@@ -569,6 +598,98 @@ const OperatorsEditor: React.FC = () => {
         <CustomOperatorCard key={`new-${customOperators.length}`} />
       </div>
     </section>
+  );
+};
+
+/** Dipendente storica: si possono cambiare nome, ruolo, specializzazione e visibilità. */
+const FixedOperatorCard: React.FC<{ operator: Operator; override?: OperatorOverride }> = ({ operator, override }) => {
+  const original = OPERATORS.find((o) => o.id === operator.id)!;
+  const initial = {
+    name: operator.name,
+    role: operator.role,
+    specialization: operator.specialization,
+    active: operator.active !== false,
+  };
+  const [f, setF] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const sig = JSON.stringify(initial);
+  useEffect(() => {
+    setF(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+  const dirty = JSON.stringify(f) !== sig;
+
+  const save = async () => {
+    if (f.name.trim().length < 2) return setMsg({ ok: false, text: 'Inserisci il nome.' });
+    setBusy(true);
+    setMsg(null);
+    try {
+      await saveOperatorOverride({
+        operatorId: operator.id,
+        name: f.name.trim() === original.name ? null : f.name.trim(),
+        role: f.role.trim() === original.role ? null : f.role.trim(),
+        specialization: f.specialization.trim() === original.specialization ? null : f.specialization.trim(),
+        active: f.active,
+      });
+      setMsg({ ok: true, text: 'Salvato' });
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reset = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await resetOperatorOverride(operator.id);
+      setMsg({ ok: true, text: 'Ripristinato' });
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`p-4 rounded-2xl border border-[#EEDFE1] space-y-3 ${f.active ? 'bg-[#FCF8F8]' : 'bg-[#FAF5F5] opacity-75'}`}>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Nome</span>
+          <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={60} className={`${inputCls} w-full`} />
+        </label>
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Ruolo</span>
+          <input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} maxLength={120} className={`${inputCls} w-full`} />
+        </label>
+        <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
+          <span>Specializzazione</span>
+          <input value={f.specialization} onChange={(e) => setF({ ...f, specialization: e.target.value })} maxLength={200} className={`${inputCls} w-full`} />
+        </label>
+      </div>
+      <label className="flex items-center gap-2 text-xs font-semibold text-[#261F21] cursor-pointer">
+        <input type="checkbox" className="w-4 h-4 accent-[#AA853D]" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} />
+        Attiva (compare in agenda, nella prenotazione e nella pagina Chi siamo)
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={save} disabled={busy || !dirty} className="px-4 py-2 bg-[#261F21] text-[#D8B268] text-xs font-bold rounded-xl disabled:opacity-40">
+          {busy ? 'Salvataggio…' : 'Salva'}
+        </button>
+        {override && (
+          <button type="button" onClick={reset} disabled={busy} className="px-3 py-2 text-xs font-semibold text-[#736266] border border-[#DEC7CA] rounded-xl flex items-center gap-1.5 disabled:opacity-40">
+            <RotateCcw className="w-3.5 h-3.5" /> Ripristina originale
+          </button>
+        )}
+        {msg && (
+          <span role="status" className={`text-xs font-semibold ${msg.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            {msg.text}
+          </span>
+        )}
+      </div>
+    </div>
   );
 };
 

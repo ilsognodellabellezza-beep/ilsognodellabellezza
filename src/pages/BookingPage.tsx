@@ -15,11 +15,11 @@ import {
   Info
 } from 'lucide-react';
 import { Service, Operator, TreatmentCategory } from '../types';
-import { useSalon, loadSalonData, isBlockedSlot, isLaserService, laserAllowsSlot, laserOpenOn, dayStatus, whatsappUrl, formatPhone } from '../lib/salon';
+import { useSalon, loadSalonData, isBlockedSlot, blockEndMinutes, isLaserService, laserAllowsSlot, laserOpenOn, dayStatus, whatsappUrl, formatPhone } from '../lib/salon';
 import { OperatorAvatar } from '../components/ServicePhoto';
 import { saveAppointment, getBookedSlotsRange, BookedSlot, SlotTakenError } from '../lib/storage';
-import { toLocalDateStr, timeToMinutes, addDays } from '../lib/dates';
-import { useSiteConfig, loadSiteConfig, isOpenOn, slotsForDay, formatOpeningSummary, operatorsForService, CATEGORY_LIST } from '../lib/siteSettings';
+import { toLocalDateStr, timeToMinutes, addDays, isPastSlotToday } from '../lib/dates';
+import { useSiteConfig, loadSiteConfig, isOpenOn, slotsForDay, endsOfBookings, formatOpeningSummary, operatorsForService, CATEGORY_LIST } from '../lib/siteSettings';
 import { useAuth } from '../lib/auth';
 import { AddToCalendar } from '../components/AddToCalendar';
 import { MonthCalendar } from '../components/MonthCalendar';
@@ -122,11 +122,11 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     }
   }, [preselectedServiceId]);
 
-  // Si può prenotare da domani fino a "anticipo massimo" giorni (impostabile dal titolare, di base 6 mesi)
-  const minDate = useMemo(() => toLocalDateStr(addDays(new Date(), 1)), []);
+  // Si può prenotare da oggi (solo gli orari non ancora passati) fino a "anticipo massimo" giorni (impostabile dal titolare, di base 6 mesi)
+  const minDate = useMemo(() => toLocalDateStr(new Date()), []);
   const maxDate = useMemo(() => toLocalDateStr(addDays(new Date(), settings.maxAdvanceDays)), [settings.maxAdvanceDays]);
   const [visibleMonth, setVisibleMonth] = useState(() => {
-    const t = addDays(new Date(), 1);
+    const t = new Date();
     return new Date(t.getFullYear(), t.getMonth(), 1);
   });
 
@@ -179,12 +179,20 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
     const duration = selectedService?.durationMinutes ?? 30;
     const candidates = selectedOperator === 'any' ? qualifiedOperators : [selectedOperator];
     const laser = isLaserService(selectedService);
-    return slotsForDay(settings, date, duration)
+    const serviceId = selectedService?.id;
+    // oltre alla griglia: l'orario in cui un'operatrice finisce un altro servizio (o un blocco) è subito prenotabile
+    const extra = [
+      ...endsOfBookings(bookings, candidates.map((op) => op.id)),
+      ...candidates.flatMap((op) => blockEndMinutes(date, op.id)),
+    ];
+    return slotsForDay(settings, date, duration, extra)
+      // oggi: gli orari già passati non si vedono
+      .filter((time) => !isPastSlotToday(date, time))
       // il laser è in affitto: solo nei giorni e negli orari impostati
       .filter((time) => !laser || laserAllowsSlot(date, time, duration))
       .map((time) => ({
         time,
-        isAvailable: candidates.some((op) => isOperatorFree(bookings, op.id, time, duration) && !isBlockedSlot(date, time, duration, op.id)),
+        isAvailable: candidates.some((op) => isOperatorFree(bookings, op.id, time, duration) && !isBlockedSlot(date, time, duration, op.id, serviceId)),
       }));
   };
 
@@ -494,6 +502,9 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                           </div>
 
                           <div className="text-right shrink-0">
+                            {service.priceFrom && (
+                              <span className="block text-[10px] font-semibold uppercase tracking-wide text-[#8F7D82]">a partire da</span>
+                            )}
                             {service.promoPrice ? (
                               <div>
                                 <span className="text-lg font-serif font-bold text-[#AA853D]">
@@ -832,6 +843,7 @@ export const BookingPage: React.FC<BookingPageProps> = ({ preselectedServiceId, 
                       {selectedService?.categoryLabel}
                     </span>
                     <span className="font-serif font-bold text-lg text-[#261F21]">
+                      {selectedService?.priceFrom && <span className="text-[10px] font-semibold uppercase tracking-wide text-[#8F7D82] mr-1.5">a partire da</span>}
                       €{(selectedService?.promoPrice || selectedService?.price)?.toFixed(2)}
                     </span>
                   </div>

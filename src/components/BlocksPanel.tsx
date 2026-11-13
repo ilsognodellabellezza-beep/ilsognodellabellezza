@@ -2,15 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { Ban, MessageCircle, Phone, Trash2, X } from 'lucide-react';
 import { Appointment, AppointmentStatus } from '../types';
 import { AppointmentBlock, addBlock, blockAffectsAppointment, deleteBlock, useSalon, SALON_NAME } from '../lib/salon';
-import { useSiteConfig } from '../lib/siteSettings';
+import { useSiteConfig, CATEGORY_LIST } from '../lib/siteSettings';
 import { toLocalDateStr } from '../lib/dates';
 
 const inputCls = 'px-2.5 py-2 text-xs bg-white border border-[#DEC7CA] rounded-lg focus:outline-none focus:border-[#AA853D]';
 const fmt = (d: string) => new Intl.DateTimeFormat('it-IT', { weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(`${d}T12:00:00`));
 
 const SQL_HINT = 'Esegui lo script supabase/08-novita-sito-gestionale.sql nel database (SQL Editor di Supabase).';
+const SQL_HINT_10 = 'Esegui lo script supabase/10-blocchi-servizi-oggi.sql nel database (SQL Editor di Supabase).';
 const errText = (e: unknown) => {
   const m = (e as Error).message || '';
+  if (/service_ids/i.test(m)) return SQL_HINT_10;
   return /appointment_blocks|schema cache|relation/i.test(m) ? SQL_HINT : m;
 };
 
@@ -33,7 +35,7 @@ interface Props {
 /** "Blocca appuntamenti": dal giorno al giorno, fascia oraria facoltativa, tutto il centro o una dipendente. */
 export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, openSignal = 0 }) => {
   const { blocks } = useSalon();
-  const { allOperators } = useSiteConfig();
+  const { allOperators, allServices } = useSiteConfig();
   const today = toLocalDateStr();
   const [formOpen, setFormOpen] = useState(false);
   const [from, setFrom] = useState(today);
@@ -42,6 +44,9 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
   const [fromTime, setFromTime] = useState('09:00');
   const [toTime, setToTime] = useState('18:30');
   const [scope, setScope] = useState<string[]>([]); // vuoto = tutto il centro
+  const [onlyServices, setOnlyServices] = useState(false); // false = tutti i servizi
+  const [serviceScope, setServiceScope] = useState<string[]>([]);
+  const [serviceQuery, setServiceQuery] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +59,14 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
 
   const active = blocks.filter((b) => b.endDate >= today);
   const operatorName = (id: string | null) => (id ? allOperators.find((o) => o.id === id)?.name ?? 'Dipendente' : 'Tutto il centro');
+  const serviceNames = (ids: string[]) =>
+    ids.map((id) => allServices.find((s) => s.id === id)?.name ?? 'Servizio').join(', ');
+  const toggleService = (id: string) =>
+    setServiceScope((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const visibleServices = allServices.filter((s) => {
+    const q = serviceQuery.trim().toLowerCase();
+    return !q || s.name.toLowerCase().includes(q);
+  });
   const affected = (b: AppointmentBlock) =>
     appointments
       .filter((a) => blockAffectsAppointment(b, a))
@@ -63,6 +76,7 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
     if (!from || !to) return setError('Scegli il giorno di inizio e di fine.');
     if (to < from) return setError('Il giorno di fine non può precedere quello di inizio.');
     if (timed && toTime <= fromTime) return setError('L’ora di fine deve essere dopo quella di inizio.');
+    if (onlyServices && serviceScope.length === 0) return setError('Scegli almeno un servizio da bloccare, oppure togli la spunta "Solo alcuni servizi".');
     setBusy(true);
     setError(null);
     const targets: (string | null)[] = scope.length === 0 ? [null] : scope;
@@ -72,12 +86,16 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
       fromTime: timed ? fromTime : null,
       toTime: timed ? toTime : null,
       operatorId,
+      serviceIds: onlyServices ? serviceScope : [],
       note,
     }));
     try {
       for (const d of drafts) await addBlock(d);
       setJustCreated(drafts.map((d, i) => ({ id: 'new' + i, ...d })));
       setScope([]);
+      setOnlyServices(false);
+      setServiceScope([]);
+      setServiceQuery('');
       setFormOpen(false);
       setNote('');
     } catch (e) {
@@ -223,6 +241,53 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
               </div>
               <p className="text-[10px] text-[#8F7D82]">Puoi scegliere una o più dipendenti: gli altri restano prenotabili.</p>
             </div>
+            <div className="sm:col-span-2 space-y-1.5 text-[11px] font-medium text-[#55474A]">
+              <label className="flex items-center gap-2 text-xs font-semibold text-[#261F21] cursor-pointer">
+                <input type="checkbox" className="w-4 h-4 accent-[#8A3B49]" checked={onlyServices} onChange={(e) => setOnlyServices(e.target.checked)} />
+                Solo alcuni servizi (altrimenti si bloccano tutti)
+              </label>
+              {onlyServices && (
+                <div className="space-y-2 p-3 rounded-xl bg-white border border-[#EBCDD2]">
+                  <input
+                    value={serviceQuery}
+                    onChange={(e) => setServiceQuery(e.target.value)}
+                    placeholder="Cerca un servizio…"
+                    className={`${inputCls} w-full`}
+                  />
+                  <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                    {CATEGORY_LIST.map((c) => {
+                      const items = visibleServices.filter((s) => s.category === c.id);
+                      if (items.length === 0) return null;
+                      return (
+                        <div key={c.id}>
+                          <p className="text-[10px] font-semibold text-[#AA853D] uppercase tracking-wide mb-1">{c.label}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {items.map((s) => {
+                              const on = serviceScope.includes(s.id);
+                              return (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  aria-pressed={on}
+                                  onClick={() => toggleService(s.id)}
+                                  className={`px-2.5 py-1 rounded-full border text-[11px] font-semibold text-left ${on ? 'bg-[#8A3B49] text-white border-[#8A3B49]' : 'bg-white border-[#DEC7CA] text-[#261F21]'}`}
+                                >
+                                  {s.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {visibleServices.length === 0 && <p className="text-[11px] text-[#8F7D82]">Nessun servizio trovato.</p>}
+                  </div>
+                  <p className="text-[10px] text-[#8F7D82]">
+                    {serviceScope.length === 0 ? 'Nessun servizio scelto.' : `Bloccati: ${serviceScope.length} serviz${serviceScope.length === 1 ? 'io' : 'i'}. Gli altri servizi restano prenotabili.`}
+                  </p>
+                </div>
+              )}
+            </div>
             <label className="space-y-1 text-[11px] font-medium text-[#55474A]">
               <span>Motivo (resta riservato)</span>
               <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={160} placeholder="Es. malattia" className={`${inputCls} w-full`} />
@@ -251,7 +316,8 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
             <p className="text-xs font-bold text-[#261F21]">
               Blocco attivo: {justCreated.map((b) => operatorName(b.operatorId)).join(', ')} · {fmt(justCreated[0].startDate)}
               {justCreated[0].endDate !== justCreated[0].startDate && ` → ${fmt(justCreated[0].endDate)}`}
-              {justCreated[0].fromTime && ` · ${justCreated[0].fromTime}–${justCreated[0].toTime}`}. Le clienti non vedono più orari disponibili.
+              {justCreated[0].fromTime && ` · ${justCreated[0].fromTime}–${justCreated[0].toTime}`}
+              {justCreated[0].serviceIds.length > 0 && ` · solo: ${serviceNames(justCreated[0].serviceIds)}`}. Le clienti non vedono più gli orari bloccati.
             </p>
             <button type="button" aria-label="Chiudi" onClick={() => setJustCreated([])} className="text-[#8F7D82] shrink-0">
               <X className="w-5 h-5" />
@@ -275,6 +341,7 @@ export const BlocksPanel: React.FC<Props> = ({ appointments, onStatusChange, ope
                   <span className="font-bold text-[#8A3B49]">{operatorName(b.operatorId)}</span>{' '}
                   <span className="capitalize">{b.startDate === b.endDate ? fmt(b.startDate) : `${fmt(b.startDate)} → ${fmt(b.endDate)}`}</span>
                   {b.fromTime && b.toTime ? <span> · {b.fromTime}–{b.toTime}</span> : <span> · tutto il giorno</span>}
+                  <span className="font-semibold"> · {b.serviceIds.length > 0 ? `solo: ${serviceNames(b.serviceIds)}` : 'tutti i servizi'}</span>
                   {b.note && <span className="text-[#736266]"> · {b.note}</span>}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

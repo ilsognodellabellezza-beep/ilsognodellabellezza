@@ -12,6 +12,16 @@ export function addDays(d: Date, days: number): Date {
   return copy;
 }
 
+/** Minuti trascorsi dalla mezzanotte (ora locale) */
+export function nowMinutes(d: Date = new Date()): number {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/** L'orario di oggi è già passato? (le altre date non sono mai "passate" qui) */
+export function isPastSlotToday(dateStr: string, time: string, now: Date = new Date()): boolean {
+  return dateStr === toLocalDateStr(now) && timeToMinutes(time) <= nowMinutes(now);
+}
+
 /** "HH:mm" o "HH:mm:ss" → minuti dalla mezzanotte */
 export function timeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);

@@ -223,20 +223,16 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             </div>
           </div>
 
-          {/* Card 2: Massaggi (Solo Donna) */}
+          {/* Card 2: Trattamento corpo */}
           <div
             onClick={() => onNavigate('trattamenti')}
             className="p-6 bg-white rounded-2xl border border-[#EEDFE1] shadow-2xs hover:shadow-md transition-all cursor-pointer group space-y-3"
           >
-            <span className="text-[11px] font-bold text-[#8A3B49] bg-[#FAF0F2] px-2 py-0.5 rounded uppercase tracking-wider inline-block">
-              Riservato Solo Donna
-            </span>
             <h3 className="font-serif text-xl font-bold text-[#261F21] group-hover:text-[#AA853D] transition-colors">
               Trattamento corpo
             </h3>
             <p className="text-xs text-[#55474A] leading-relaxed">
               Rituali linfodrenanti metodo Rigenera, decontratturanti con oli caldi e modellanti anticellulite.
-              Eseguiti con la massima riservatezza per sole donne.
             </p>
             <div className="pt-2 flex items-center justify-between text-xs font-semibold">
               <span className="text-[#261F21]">Da €45,00</span>

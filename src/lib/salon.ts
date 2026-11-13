@@ -34,6 +34,8 @@ export interface AppointmentBlock {
   toTime: string | null;
   /** null = tutto il centro */
   operatorId: string | null;
+  /** vuoto = tutti i servizi, altrimenti solo questi */
+  serviceIds: string[];
   note: string;
 }
 
@@ -108,6 +110,7 @@ const mapBlock = (r: any): AppointmentBlock => ({
   fromTime: hhmm(r.from_time),
   toTime: hhmm(r.to_time),
   operatorId: r.operator_id ?? null,
+  serviceIds: r.service_ids ?? [],
   note: r.note ?? '',
 });
 const mapPromo = (r: any): Promotion => ({
@@ -240,25 +243,41 @@ export function dayStatus(settings: BookingSettings, dateStr: string): DayStatus
 // Blocchi appuntamenti
 // ---------------------------------------------------------------------------
 /** Il blocco copre questo orario? (operatorId null = controlla solo i blocchi di tutto il centro) */
-export function isBlockedSlot(dateStr: string, time: string, durationMinutes: number, operatorId: string | null): boolean {
+export function isBlockedSlot(
+  dateStr: string,
+  time: string,
+  durationMinutes: number,
+  operatorId: string | null,
+  serviceId?: string | null
+): boolean {
   const start = timeToMinutes(time);
   const end = start + durationMinutes;
   return store.blocks.some((b) => {
     if (!inRange(dateStr, b.startDate, b.endDate)) return false;
     if (b.operatorId !== null && b.operatorId !== operatorId) return false;
+    // blocco solo per alcuni servizi: vale se il servizio scelto è tra quelli (o se non si sa quale sia)
+    if (b.serviceIds.length > 0 && serviceId && !b.serviceIds.includes(serviceId)) return false;
     if (!b.fromTime || !b.toTime) return true;
     return start < timeToMinutes(b.toTime) && timeToMinutes(b.fromTime) < end;
   });
 }
 
+/** Minuti in cui finiscono i blocchi a fascia oraria di quel giorno: da lì l'operatrice torna libera. */
+export function blockEndMinutes(dateStr: string, operatorId: string | null): number[] {
+  return store.blocks
+    .filter((b) => inRange(dateStr, b.startDate, b.endDate) && b.toTime && (b.operatorId === null || b.operatorId === operatorId))
+    .map((b) => timeToMinutes(b.toTime as string));
+}
+
 /** L'appuntamento cade dentro il blocco? (serve per elencare le clienti da spostare o avvisare) */
 export function blockAffectsAppointment(
-  b: Pick<AppointmentBlock, 'startDate' | 'endDate' | 'fromTime' | 'toTime' | 'operatorId'>,
-  a: { date: string; time: string; durationMinutes: number; operatorId: string; status: string }
+  b: Pick<AppointmentBlock, 'startDate' | 'endDate' | 'fromTime' | 'toTime' | 'operatorId'> & { serviceIds?: string[] },
+  a: { date: string; time: string; durationMinutes: number; operatorId: string; status: string; serviceId?: string }
 ): boolean {
   if (a.status === 'annullato') return false;
   if (!inRange(a.date, b.startDate, b.endDate)) return false;
   if (b.operatorId !== null && b.operatorId !== a.operatorId) return false;
+  if (b.serviceIds && b.serviceIds.length > 0 && a.serviceId && !b.serviceIds.includes(a.serviceId)) return false;
   if (!b.fromTime || !b.toTime) return true;
   const s = timeToMinutes(a.time);
   return s < timeToMinutes(b.toTime) && timeToMinutes(b.fromTime) < s + a.durationMinutes;
@@ -433,6 +452,8 @@ export async function addBlock(b: Omit<AppointmentBlock, 'id'>): Promise<void> {
       from_time: b.fromTime,
       to_time: b.toTime,
       operator_id: b.operatorId,
+      // la colonna esiste solo dopo lo script 10: si invia solo se serve
+      ...(b.serviceIds.length > 0 ? { service_ids: b.serviceIds } : {}),
       note: b.note.trim(),
     })
     .select()
