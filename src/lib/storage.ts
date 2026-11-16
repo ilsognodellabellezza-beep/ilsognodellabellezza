@@ -260,6 +260,29 @@ export async function getBookedSlotsRange(from: string, to: string): Promise<Rec
   return out;
 }
 
+/** Modifica i dati di una cliente già inserita (e li allinea negli appuntamenti collegati). */
+export async function updateClient(
+  id: string,
+  data: { fullName: string; phone: string; email: string; notes?: string; allergies?: string }
+): Promise<void> {
+  const fullName = data.fullName.trim();
+  const phone = data.phone.trim();
+  const email = data.email.trim();
+  const notes = data.notes?.trim() || null;
+  const allergies = data.allergies?.trim() || null;
+  const { error } = await supabase
+    .from('clients')
+    .update({ full_name: fullName, phone, email, notes, allergies })
+    .eq('id', id);
+  fail('modifica cliente', error);
+  const { error: appErr } = await supabase
+    .from('appointments')
+    .update({ client_name: fullName, client_phone: phone, client_email: email })
+    .eq('client_id', id);
+  fail('aggiornamento appuntamenti della cliente', appErr);
+  await loadManagementData();
+}
+
 export async function updateAppointmentStatus(id: string, status: Appointment['status']): Promise<void> {
   const { error } = await supabase.from('appointments').update({ status }).eq('id', id);
   fail('aggiornamento appuntamento', error);

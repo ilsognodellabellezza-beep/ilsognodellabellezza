@@ -22,6 +22,7 @@ import { Appointment, Client, AppointmentStatus } from '../types';
 import {
   getStoredAppointments,
   updateAppointmentStatus,
+  updateClient,
   getStoredClients,
   searchClients,
   getStoredEmailLogs,
@@ -87,6 +88,34 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
   const [newNotes, setNewNotes] = useState('');
 
   const [previewEmailApp, setPreviewEmailApp] = useState<Appointment | null>(null);
+
+  // Modifica cliente già inserita
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [clientDraft, setClientDraft] = useState({ fullName: '', phone: '', email: '', notes: '', allergies: '' });
+  const [clientSaving, setClientSaving] = useState(false);
+
+  const startClientEdit = (c: Client) => {
+    setClientDraft({
+      fullName: c.fullName,
+      phone: c.phone,
+      email: c.email,
+      notes: c.notes ?? '',
+      allergies: c.allergies ?? '',
+    });
+    setEditingClientId(c.id);
+  };
+
+  const saveClientEdit = async (id: string) => {
+    setClientSaving(true);
+    try {
+      await updateClient(id, clientDraft);
+      setEditingClientId(null);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setClientSaving(false);
+    }
+  };
 
   const { profile, signOut } = useAuth();
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -468,7 +497,45 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredClients.map((c) => (
+              {filteredClients.map((c) =>
+                editingClientId === c.id ? (
+                  <div key={c.id} className="bg-white p-5 rounded-2xl border border-[#AA853D] shadow-2xs space-y-2.5">
+                    {([
+                      ['fullName', 'Nome e cognome *'],
+                      ['phone', 'Cellulare *'],
+                      ['email', 'Email'],
+                      ['notes', 'Note'],
+                      ['allergies', 'Allergie'],
+                    ] as const).map(([field, label]) => (
+                      <div key={field} className="space-y-1">
+                        <label className="text-[11px] font-medium text-[#261F21]">{label}</label>
+                        <input
+                          type="text"
+                          value={clientDraft[field]}
+                          onChange={(e) => setClientDraft({ ...clientDraft, [field]: e.target.value })}
+                          className="w-full px-3 py-2 text-xs bg-white border border-[#DEC7CA] rounded-xl focus:outline-none focus:border-[#AA853D]"
+                        />
+                      </div>
+                    ))}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={clientSaving || !clientDraft.fullName.trim() || !clientDraft.phone.trim()}
+                        onClick={() => saveClientEdit(c.id)}
+                        className="flex-1 py-2 text-xs font-bold bg-[#AA853D] text-white rounded-xl disabled:opacity-50"
+                      >
+                        {clientSaving ? 'Salvataggio...' : 'Salva'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingClientId(null)}
+                        className="flex-1 py-2 text-xs font-bold border border-[#DEC7CA] text-[#55474A] rounded-xl"
+                      >
+                        Annulla
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                 <div key={c.id} className="bg-white p-5 rounded-2xl border border-[#EEDFE1] shadow-2xs space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
@@ -489,8 +556,18 @@ export const ManagementPage: React.FC<ManagementPageProps> = () => {
                   </div>
 
                   {c.notes && <div className="p-2.5 bg-[#FAF5F5] rounded-xl text-[11px] text-[#55474A] italic">"{c.notes}"</div>}
+                  {c.allergies && <p className="text-[11px] text-[#9B3B3B]">Allergie: {c.allergies}</p>}
+
+                  <button
+                    type="button"
+                    onClick={() => startClientEdit(c)}
+                    className="w-full py-2 text-xs font-bold border border-[#DEC7CA] text-[#55474A] rounded-xl hover:border-[#AA853D] hover:text-[#AA853D] transition"
+                  >
+                    Modifica dati
+                  </button>
                 </div>
-              ))}
+                )
+              )}
             </div>
           </div>
         )}
